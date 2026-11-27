@@ -33,6 +33,8 @@ Precedence on architectural questions:
 
 **ADRs > architecture.md > decision-log.md > PRD.md**
 
+**D4 exception (decision-log.md DL-54):** for D4, the decision-log entries listed in §12 take precedence over the specific ADR, architecture.md and AGENTS.md wording named there.
+
 The PRD defines product behaviour and requirement IDs. It does not authorize architectural changes.
 
 Rules:
@@ -388,6 +390,28 @@ Other unspecified conventions, including migration filename conventions and exac
 
 Sources: [ADR-001; architecture.md §5–§9; Task 8 refinement]
 
+### 8.2 Answers recorded on 27 November 2026
+
+The team answered all three questions in §8.1 and the related conventions (decision-log.md DL-29, DL-30, DL-44 to DL-47):
+
+- **Open Question 1 — answered:** separate top-level `client/` and `server/` folders. No shared business package.
+- **Open Question 2 — answered:** all eleven backend modules and interfaces, including Push Gateway Interface and OAuth Client Interface, have their own folders under `server/src/`. Each has one public `index.ts`. The folder names are `api-layer`, `planning-core`, `sync-engine`, `classroom-adapter`, `calendar-adapter`, `ai-adapter`, `notification-scheduler`, `credential-handling`, `data-access`, `push-gateway` and `oauth-client` (DL-45).
+- **Open Question 3 — answered (DL-44):**
+  - each module keeps its single `index.ts`;
+  - the Data Access Layer's `index.ts` exports a named group `sessions` (issue, validate, expire), and the API Layer imports only `sessions` from the Data Access Layer;
+  - Planning Core's `index.ts` exports a named group `readOnly` (upcoming start-by items, plan versions, assignment status) for Notification Scheduler, which is unused in D4.
+
+  dependency-cruiser cannot see which names are imported, so the Gate 3 review checks this by reading the imports (§4.3, §4.4).
+- **Migrations (DL-45):**
+  - `server/src/data-access/migrations/NNNN_short_name.sql`, numbered in order;
+  - each slice uses only the number assigned to it in the E-03 data model;
+  - never edit a migration that has been applied; add a new one instead.
+- **Boundary check (DL-30, DL-46):** `npm run check:boundaries`, run in `server/`, with the allow-list from §4.1 in `server/.dependency-cruiser.cjs`.
+  - It must pass before any slice branch is merged.
+  - Its output is pasted into the Gate 3 evidence (`evidence/Quality-Gates-Checklist.md`).
+  - For D4 this local check replaces the CI wording in §4 (see §12).
+- **Sample data (DL-28, DL-47):** the seed code lives inside the Data Access Layer at `server/src/data-access/seed/` and runs with `npm run seed:sample` in `server/`. It can be re-run safely and is not a migration, so §6 rules 11 and 12 still hold.
+
 ---
 
 ## 9. Actions requiring human approval
@@ -448,8 +472,8 @@ These items are recorded as awaiting confirmation. Ask before implementing behav
 
 | Item | Do not assume |
 |---|---|
-| DL-17 (ADR-002 to ADR-006 aligned to the PRD) awaits team re-approval | Affected behaviour below is final |
-| Deadline-change notices | Whether they reach devices. architecture.md §8 says open under OQ-34; ADR-002 and ADR-003 say they are sent. OQ-34 covers only course-balance notices and urgent start-by warnings |
+| DL-17 (ADR-002 to ADR-006 aligned to the PRD): re-approved 27 November 2026 (DL-25) | That behaviour belonging to deferred slices may be built (§12) |
+| Deadline-change notices | That they can be delivered in D4. architecture.md §8, ADR-002 and ADR-003 all say the notice is a Notification sent to the Student's devices (DL-17). OQ-34 covers only course-balance notices and urgent start-by warnings. Device delivery belongs to deferred slices S-12 and S-17, which must not be built (§12) |
 | OQ-27 | Revocation keep-or-delete details beyond the PRD requirement |
 | OQ-18, OQ-22, OQ-23 | Notification time of day, repeat limits or quiet hours |
 | DL-06 | The AI allow-list is final; its default is awaiting PRD confirmation |
@@ -460,6 +484,32 @@ These items are recorded as awaiting confirmation. Ask before implementing behav
 | Other OQ-xx entries | Any unresolved behaviour or technical choice is settled without explicit confirmation |
 
 Do not implement an open item as a settled rule merely because it appears in an ADR, PRD or previous AI-generated proposal. Check its current approval status in the decision log and the relevant source.
+
+---
+
+## 12. Approved D4 scope: deferred slices must not be built
+
+Recorded on 27 November 2026 (decision-log.md DL-19, DL-20, DL-27, DL-28, DL-35, DL-54; plan.md §6).
+
+- Build only the committed slices in plan.md: S-01, S-02, S-03, S-04, S-07, S-08, S-09, S-10, S-14, S-15, S-16. Build the reserve S-19 only when the team starts it.
+- **Do not build** the deferred slices S-05, S-06, S-11, S-12, S-13, S-17 and S-18. That means:
+  - no calls to Google Classroom, Google Calendar, Google OAuth or Gemini;
+  - no Web Push sending;
+  - no AI estimation or re-estimation;
+  - no Classroom revocation or reconnection flow.
+- Send no student data to any external service (DL-35).
+- The eleven module folders exist under `server/src/` with their public `index.ts` (DL-29, DL-45). For D4, §3.1 ("MUST implement") is met by these folders and entry files. Modules that serve only deferred slices contain no deferred behaviour (DL-54).
+- **D4 precedence (DL-54).** For D4 only, and as an exception to §2, these entries take precedence. The original wording stays in place.
+
+  | Decision-log entry (D4) | Takes precedence over |
+  |---|---|
+  | DL-27: one seeded demo Student, with a session issued through the Data Access Layer's `sessions` group | ADR-006 Decision 1 (Google sign-in) |
+  | DL-24: local execution only, no Azure VM, no tunnel | DL-02; ADR-001 (Hosting, D1, D2); architecture.md §9.5; §6 rule 8 and the hosting rows of §7 |
+  | DL-30, DL-46: the local `npm run check:boundaries` must pass before every merge | The "CI" wording in ADR-001, architecture.md §6.2, and §4.2 and §4.5. The allow-list, default-deny, intra-module and fail-on-forbidden rules in §4 still apply. |
+  | DL-19, this section: deferred slices are not built | §3.1, as described above |
+  | DL-35: no AI estimation; effort entered manually; no data sent externally | DL-13; ADR-003 Decision 6; ADR-006 Decision 7; the Gemini parts of §5.1 and §7 |
+- The demo Student session (DL-27) and the sample-data script (DL-28) are approved temporary measures. Do not replace them with Google sign-in or Classroom import without a new team decision.
+- Building any deferred behaviour requires a new decision-log entry and explicit human approval.
 
 ---
 
