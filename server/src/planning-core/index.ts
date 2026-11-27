@@ -6,6 +6,10 @@
  */
 export const readOnly = {} as const;
 
+// Foundation placeholder recalculation (DL-55, data-model.md §3). S-07 and S-10 call it;
+// S-03 replaces the body of recalculate.ts with the real R1-B calculation.
+export { recalculateStudentPlan } from './recalculate';
+
 // --- Slice exports (one line per slice, DL-55) ---
 // [S-01] Availability planning exports
 // [S-02] Course rating exports

@@ -50,3 +50,46 @@
 | Important edge cases checked | ☐ | | |
 | Selected NFRs measured (for example NFR-01 timing, NFR-04 onboarding), with actual values recorded | ☐ | | |
 | Critical failures resolved, or listed as known issues | ☐ | | |
+
+## Record: E-03 Stage 3 design artefacts
+
+**Slice:** E-03 **plan.md version:** v03
+
+| Gate | Check | Done? | Evidence link | Notes |
+|---|---|---|---|---|
+| 1 | Scope written | ☐ | | |
+| 1 | Requirement IDs linked | ☐ | | |
+| 1 | Acceptance criteria clear | ☐ | | |
+| 1 | Blocking open decisions (`plan.md` §4) resolved | ☐ | | |
+| 2 | Core behaviour checked by a team member | ☐ | | Re-run on a Windows team machine by Claude for the reviewer; Subhan to confirm |
+| 2 | Important negative cases checked | ☐ | | |
+| 2 | Relevant EP/BVA cases checked (or "not applicable" with reason) | ☐ | | |
+| 3 | Boundary check (dependency-cruiser) passes | ☑ | `Test-Evidence.md`, row "E-03 / Gate 3" | 27 modules, 21 dependencies, no violations |
+| 3 | Only the 11 agreed backend modules/interfaces used | ☑ | `ls server/src` | 11 module folders; `recalculate.ts` is a file inside Planning Core, exported through its `index.ts` |
+| 3 | No prohibited technology (agent.md §7.1) | ☑ | `git diff` | No `package.json` change; advisory lock is plain PostgreSQL |
+| 3 | Only the Data Access Layer touches PostgreSQL | ☑ | search for `from 'pg'` outside `data-access` | No matches |
+| 3 | Any design change recorded in the ADR or decision log | ☐ | `api-contract.md` §1.1 | Version-checked write rule is in the contract; **still needs a decision-log entry (proposed DL-57)** |
+| 4 | Previously accepted slices re-checked | ☐ | | No slice accepted yet |
+| 4 | Merged and runs from a clean start (migrations apply) | ☐ | | Migrations apply from empty in the tests; tick after merge |
+
+## Record: E-02 Demo Student session
+
+**Slice:** E-02 **plan.md version:** v03
+
+| Gate | Check | Done? | Evidence link | Notes |
+|---|---|---|---|---|
+| 1 | Scope written | ☐ | | |
+| 1 | Requirement IDs linked | ☐ | | |
+| 1 | Acceptance criteria clear | ☐ | | |
+| 1 | Blocking open decisions (`plan.md` §4) resolved | ☐ | | |
+| 2 | Core behaviour checked by a team member | ☐ | `Test-Evidence.md`, rows "E-02 / … (review)" | Re-run on a Windows team machine by Claude for Ali; tick when Ali confirms |
+| 2 | Important negative cases checked | ☐ | | Negative tests exist (AC4 to AC9, AC14); tick after the team re-run |
+| 2 | Relevant EP/BVA cases checked (or "not applicable" with reason) | ☐ | | |
+| 3 | Boundary check (dependency-cruiser) passes | ☑ | `Test-Evidence.md`, rows "E-02 / Gate 3" and "E-02 / Gate 3 (review)" | Re-run in review on top of E-03: 32 modules, 35 dependencies, no violations |
+| 3 | Only the 11 agreed backend modules/interfaces used | ☑ | `ls server/src` | 11 module folders, none added; the API Layer imports only `sessions` from `data-access` (`api-layer/index.ts` line 3) |
+| 3 | No prohibited technology (agent.md §7.1) | ☑ | `git diff` | No `package.json` change; tests use Vitest; no cache, broker, queue or push transport added |
+| 3 | Only the Data Access Layer touches PostgreSQL | ☑ | search for `from 'pg'` outside `data-access` | No matches |
+| 3 | Any design change recorded in the ADR or decision log | ☑ | `docs/design/api-contract.md` §0 | The only addition, the opt-in `Secure` cookie flag, is recorded in the contract. DL-27 and DL-44 unchanged |
+| 4 | Previously accepted slices re-checked | ☐ | | No slice accepted yet; whole suite passes (31 of 31, 5 of 5 runs, in review) |
+| 4 | Merged and runs from a clean start (migrations apply) | ☐ | | Migrations apply from empty in the tests; tick after merge |
+

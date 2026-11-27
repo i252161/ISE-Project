@@ -44,7 +44,7 @@ The foundation must be merged: E-01 to E-04 (sample courses).
 ## Files this slice may change (DL-55)
 - Only this slice's own folders: `server/src/<module>/<slice-name>/` and `client/src/features/<slice-name>/`.
 - Only this slice's marked line in each shared file: the API route list, the client navigation, Planning Core's `index.ts`, and its slot on the assignment detail page.
-- A new migration only if the E-03 contract is missing something, using this slice's reserved number.
+- A new migration only if the E-03 contract is missing something, using this slice's reserved number, `0003` (`docs/design/data-model.md` §5). The foundation migration `0001` already creates every table, so most slices need no migration.
 - **Never** `package.json`, `server/.dependency-cruiser.cjs`, or another slice's folder.
 - Merge through a GitHub pull request approved by **Ali**, then squash and merge.
 

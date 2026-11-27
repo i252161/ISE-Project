@@ -39,12 +39,13 @@ The foundation must be merged (E-01 to E-05).
 ## Rules for the agent
 - Subtasks live in Planning Core and must not change status, effort or start-by dates (agent.md §5).
 - No new packages; use only this slice's migration number.
+- Writes to assignments, allocation overrides, subtasks or timer sessions are version-checked: send and check `version`, and return `409 VERSION_CONFLICT` with `current` on a stale write (`docs/design/api-contract.md` §1.1).
 - Do not edit `server/.dependency-cruiser.cjs`.
 
 ## Files this slice may change (DL-55)
 - Only this slice's own folders: `server/src/<module>/<slice-name>/` and `client/src/features/<slice-name>/`.
 - Only this slice's marked line in each shared file: the API route list, the client navigation, Planning Core's `index.ts`, and its slot on the assignment detail page.
-- A new migration only if the E-03 contract is missing something, using this slice's reserved number.
+- A new migration only if the E-03 contract is missing something, using this slice's reserved number, `0010` (`docs/design/data-model.md` §5). The foundation migration `0001` already creates every table, so most slices need no migration.
 - **Never** `package.json`, `server/.dependency-cruiser.cjs`, or another slice's folder.
 - Merge through a GitHub pull request approved by **Subhan**, then squash and merge.
 

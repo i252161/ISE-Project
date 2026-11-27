@@ -39,13 +39,14 @@ Your own S-03 must be merged first.
 
 ## Rules for the agent
 - No new packages; use only this slice's migration number.
+- Call `recalculateStudentPlan(studentId)` from `planning-core/index.ts` after the write (`docs/design/data-model.md` §3). It is a no-op until S-03 merges.
 - Do not edit `server/.dependency-cruiser.cjs`.
 - If anything is unclear, stop and ask.
 
 ## Files this slice may change (DL-55)
 - Only this slice's own folders: `server/src/<module>/<slice-name>/` and `client/src/features/<slice-name>/`.
 - Only this slice's marked line in each shared file: the API route list, the client navigation, Planning Core's `index.ts`, and its slot on the assignment detail page.
-- A new migration only if the E-03 contract is missing something, using this slice's reserved number.
+- A new migration only if the E-03 contract is missing something, using this slice's reserved number, `0006` (`docs/design/data-model.md` §5). The foundation migration `0001` already creates every table, so most slices need no migration.
 - **Never** `package.json`, `server/.dependency-cruiser.cjs`, or another slice's folder.
 - Merge through a GitHub pull request approved by **Rehan**, then squash and merge.
 

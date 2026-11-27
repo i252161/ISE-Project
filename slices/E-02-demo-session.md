@@ -1,6 +1,6 @@
 # E-02 — Demo Student session
 
-**Type:** setup task (not a slice) · **Status:** blocked: E-01 not built · **Plan:** plan.md v03 §8 · **Decisions:** DL-27, DL-44
+**Type:** setup task (not a slice) · **Status:** built on `Ahmad's-Branch` together with E-03 (one pull request); Ali's review done (Accept after two fixes); merges with E-03. E-01 is merged · **Plan:** plan.md v03 §8 · **Decisions:** DL-27, DL-44
 **Owner:** Ahmad · **Reviewer:** Ali (DL-56)
 
 ## What this is
@@ -9,7 +9,8 @@ There is no Google sign-in in D4. Instead, one seeded demo Student is given a **
 ## What must exist when it is done
 - One demo Student row in the database.
 - The API Layer issues, validates and expires a session cookie (HttpOnly, SameSite) for that Student. It does this **only** through the Data Access Layer's `sessions` group (DL-44).
-- Requests without a valid session are refused.
+- Requests without a valid session are refused, with the `401` body defined in `docs/design/api-contract.md` §0.
+- The client opens the demo session before the app renders (`client/src/session.ts`).
 
 ## Acceptance checks
 - Opening the app gives a working session for the demo Student.
@@ -24,11 +25,11 @@ There is no Google sign-in in D4. Instead, one seeded demo Student is given a **
 
 ## Rules for the agent
 - No Google OAuth and no passwords (agent.md §12).
-- Use only the migration number that E-03 gave this task.
+- Use only migration `0014` (`docs/design/data-model.md` §5).
 - Do not edit `server/.dependency-cruiser.cjs`.
 
 ## Branch and merge
-- Branch `setup/E-02-demo-session` (suggested name), in your own worktree or clone with its own test database.
+- Delivered on `Ahmad's-Branch` together with E-03 (team choice). Use your own worktree or clone with its own test database.
 - Bring in `main`, run the tests and `npm run check:boundaries`.
 - A peer reviewer who is not the author; merge one at a time.
 

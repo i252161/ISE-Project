@@ -1,6 +1,6 @@
 # E-03 — Stage 3 design artefacts
 
-**Type:** setup task (not a slice; required by D4 Stage 3) · **Status:** can be drafted as a document now; merge after E-01 · **Plan:** plan.md v03 §8
+**Type:** setup task (not a slice; required by D4 Stage 3) · **Status:** built on `Ahmad's-Branch` together with E-02 (one pull request); Subhan's review done (Revise, fixes applied); wireframe team review still pending. E-01 is merged · **Plan:** plan.md v03 §8
 **Decisions:** DL-41, DL-45, DL-47, DL-55
 **Owner:** Rehan · **Reviewer:** Subhan (DL-56)
 
@@ -30,11 +30,11 @@ The AI-generated design documents that D4 Stage 3 asks for. They are also what l
 - `agent.md` §§2–8.
 
 ## Rules
-- Documents only. No application code.
+- Documents, plus the one foundation migration `0001_foundation.sql`, its test `foundation.test.ts`, and the placeholder `recalculateStudentPlan` in `planning-core/recalculate.ts` (plan.md: "the placeholder recalculation is in Planning Core" is a foundation condition). No other application code, except the migration-runner lock found in review (see the Workflow log).
 - Keep the artefacts in the repository; D4 says to keep any artefact that becomes implementation context.
 
 ## Branch and merge
-- Branch `setup/E-03-design` (suggested name).
+- Delivered on `Ahmad's-Branch` together with E-02 (team choice).
 - A peer reviewer who is not the author.
 - Merge after E-01.
 

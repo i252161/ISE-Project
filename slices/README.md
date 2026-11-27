@@ -2,7 +2,7 @@
 
 **Updated:** 27 November 2026 (contract-first split, DL-55; team assignment, DL-56).
 
-**Status:** these are **plans, not built work**. There is no code yet, and nothing here is done, tested or accepted.
+**Status:** most files here are **plans, not built work**. E-01 is merged. E-03 and E-02 are built and peer-reviewed, not yet merged. Everything else is not built, tested or accepted.
 
 **Source:** `plan.md` v03 and `decision-log.md` (DL-18 to DL-56). If a file here ever disagrees with plan.md, plan.md wins.
 
@@ -36,9 +36,9 @@ Everyone does the skill check together and installs the tools (E-00) on their ow
 |---|---|---|
 | [SC-skill-check.md](SC-skill-check.md) | everyone | ready |
 | [E-00-tools-and-repo.md](E-00-tools-and-repo.md) | everyone (Rehan: repo) | ready |
-| [E-01-walking-skeleton.md](E-01-walking-skeleton.md) | Ali | blocked: SC, E-00 |
-| [E-03-stage3-design.md](E-03-stage3-design.md) | Rehan | draft as a document now; merge after E-01 |
-| [E-02-demo-session.md](E-02-demo-session.md) | Ahmad | blocked: E-01 not built |
+| [E-01-walking-skeleton.md](E-01-walking-skeleton.md) | Ali | merged (PR #4) |
+| [E-03-stage3-design.md](E-03-stage3-design.md) | Rehan | reviewed by Subhan (Revise, fixes applied); wireframe review pending; on `Ahmad's-Branch` with E-02 |
+| [E-02-demo-session.md](E-02-demo-session.md) | Ahmad | reviewed by Ali (Accept after fixes); on `Ahmad's-Branch` with E-03 |
 | [E-04-sample-data.md](E-04-sample-data.md) | Subhan | blocked: E-01, E-03 not built |
 | [E-05-list-and-detail.md](E-05-list-and-detail.md) | Ahmad | blocked: E-04 not built |
 | [S-01-availability.md](S-01-availability.md) | Rehan | blocked: E-01, E-02, E-03 not built |

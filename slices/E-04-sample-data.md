@@ -9,6 +9,7 @@ There is no Google Classroom in D4, so a script loads made-up courses and assign
 ## What must exist when it is done
 - Seed code inside the Data Access Layer, at `server/src/data-access/seed/`. It is **not** a migration.
 - The command `npm run seed:sample` in `server/`. It can be run again safely and reloads the sample rows for the demo Student.
+- **Do not delete or re-create the demo Student row** (`DEMO_STUDENT_ID` in `seed/demo-student.ts`, E-02). Sessions reference it with `ON DELETE CASCADE`, so deleting it logs everyone out. Reload only the rows that belong to it.
 - At least **50 assignments across 5 courses**, including:
   - assignments with no deadline (needed by S-10);
   - mixed statuses: not started, started, Finished, Submitted, and submission "unavailable";
@@ -34,7 +35,7 @@ There is no Google Classroom in D4, so a script loads made-up courses and assign
 
 ## Rules for the agent
 - No Classroom calls.
-- Use only the migration number E-03 assigned, if any.
+- E-04 has no reserved migration number (`docs/design/data-model.md` §5). Seeding is code, not a migration.
 - Do not edit `server/.dependency-cruiser.cjs`.
 
 ## Branch and merge

@@ -1,6 +1,6 @@
 # E-01 — Walking skeleton
 
-**Type:** setup task (not a slice) · **Status:** blocked: the skill check (SC) and E-00 must be done first · **Plan:** plan.md v03 §8
+**Type:** setup task (not a slice) · **Status:** merged to `main` (pull request #4) · **Plan:** plan.md v03 §8
 **Decisions:** DL-29, DL-30, DL-31, DL-44, DL-45, DL-46, DL-55
 **Owner:** Ali · **Reviewer:** Rehan (DL-56)
 
