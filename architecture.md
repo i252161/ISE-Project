@@ -1,7 +1,7 @@
 # Architecture.md
 # AI Academic Deadline Planner
 
-**Status:** Consolidated architectural baseline for Deliverable 3, Task 8. Architecture aligned with the validated PRD through DL-17 on 15 November 2026. DL-17 and the corresponding ADR amendments await team re-approval. Open conditions remain subject to the decision log.
+**Status:** Consolidated architectural baseline for Deliverable 3, Task 8. Architecture aligned with the validated PRD through DL-17 on 15 November 2026. DL-17 and the corresponding ADR amendments were re-approved 27 November 2026 (DL-25). Open conditions remain subject to the decision log.
 
 ## 1. System overview
 
@@ -242,7 +242,7 @@ The server-side PostgreSQL database is the single source of truth. The Data Acce
 | Calculated start-by dates | Planning Core | Derived from stored inputs and stored separately from overrides. |
 | Progress evidence | Sync Engine and Student | Stored with an explicit Observed or Unknown state and timestamp. Unknown is never treated as "no activity." |
 | Course-neglect warnings | Planning Core | Recomputed from progress evidence. Warnings based on Unknown evidence carry an uncertainty indication. |
-| Deadline-change notices | Planning Core | Stored in the database when an import batch changes an official deadline, once per assignment per change. The latest deadline is applied and affected start-by dates are recalculated once. Multiple changes before processing produce one notice per assignment. Under ADR-003 and DL-17, this is a Notification delivered to the Student's devices, subject to the one-Notification-per-assignment-per-day limit. DL-17 re-approval remains pending. |
+| Deadline-change notices | Planning Core | Stored in the database when an import batch changes an official deadline, once per assignment per change. The latest deadline is applied and affected start-by dates are recalculated once. Multiple changes before processing produce one notice per assignment. Under ADR-003 and DL-17, this is a Notification delivered to the Student's devices, subject to the one-Notification-per-assignment-per-day limit. DL-17 was re-approved 27 November 2026 (DL-25). |
 | Calendar block mapping and sync state | Sync Engine | Stored in the database. Calendar block records carry the plan version from which they were built. A block that violates the official deadline or available hours carries Conflict status. |
 | Notification and acknowledgment state | Notification Scheduler | Stored in the database. Schedule records carry the plan version from which they were built. Each assignment also stores the end of its start-reminder pause. |
 | Sync cursors | Sync Engine | Stored in the database, including last successful sync times and Calendar sync tokens. |
@@ -357,12 +357,12 @@ The following items must not be treated as finalized without the required confir
 - **DL-08:** The detailed retention default after Classroom revocation awaits confirmation of OQ-27.
 - **DL-09:** Notification parameters and delivery-failure behaviour await the relevant OQ-18, OQ-22 and OQ-23 answers and Gate 1.
 - **DL-10:** The interpretation of NFR-03 remains an assumption awaiting TA confirmation.
-- **DL-17:** The alignment of ADR-002 through ADR-006 with the validated PRD awaits team re-approval.
+- **DL-17:** The alignment of ADR-002 through ADR-006 with the validated PRD was re-approved 27 November 2026 (DL-25).
 - **Gate 1:** Notification delivery test on the team's Android phones and laptop has not been run.
 - **Gate 2:** Real Google account and Classroom integration test has not been run.
 - **Gate 3:** TA confirmation of the interpretation of "local" has not been obtained.
 - Azure for Students eligibility and the AI billing account still require confirmation.
-- OQ-34 remains open only for device delivery of course-balance notices and urgent start-by warnings. Deadline-change Notifications are specified as device-delivered by ADR-003 and DL-17, subject to DL-17 re-approval.
+- OQ-34 remains open only for device delivery of course-balance notices and urgent start-by warnings. Deadline-change Notifications are specified as device-delivered by ADR-003 and DL-17, which was re-approved 27 November 2026 (DL-25).
 - The remaining open questions and their status are recorded in `decision-log.md`.
 
 ## 10. Architecture diagram
