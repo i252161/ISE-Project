@@ -39,7 +39,7 @@ Everyone does the skill check together and installs the tools (E-00) on their ow
 | [E-01-walking-skeleton.md](E-01-walking-skeleton.md) | Ali | merged (PR #4) |
 | [E-03-stage3-design.md](E-03-stage3-design.md) | Rehan | reviewed by Subhan (Revise, fixes applied); wireframe review pending; on `Ahmad's-Branch` with E-02 |
 | [E-02-demo-session.md](E-02-demo-session.md) | Ahmad | reviewed by Ali (Accept after fixes); on `Ahmad's-Branch` with E-03 |
-| [E-04-sample-data.md](E-04-sample-data.md) | Subhan | blocked: E-01, E-03 not built |
+| [E-04-sample-data.md](E-04-sample-data.md) | Subhan | built on `setup/E-04-sample-data-v2`; review by Ahmad pending |
 | [E-05-list-and-detail.md](E-05-list-and-detail.md) | Ahmad | blocked: E-04 not built |
 | [S-01-availability.md](S-01-availability.md) | Rehan | blocked: E-01, E-02, E-03 not built |
 | [S-02-course-ratings.md](S-02-course-ratings.md) | Ahmad | blocked: E-04 not built |

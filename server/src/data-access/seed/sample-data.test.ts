@@ -1,222 +1,244 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { closePool, getPool, runMigrations, sessions } from '../index';
 import { DEMO_STUDENT_ID } from './demo-student';
-import { addDays, getKarachiToday } from './sample-data';
-import { seedSampleData } from './seed-sample';
+import { seedSampleData } from './load-sample-data';
+import { addDays, buildSampleData } from './sample-data';
 
+// E-04 acceptance checks. Database tests use a FRESH Student each time: the demo Student's sample
+// data is loaded once in test-setup.ts and other test files read it in parallel.
+
+const TODAY = '2026-12-07';
+const NOW = new Date('2026-12-07T07:00:00Z'); // 12:00 Karachi
+const data = buildSampleData('00000000-0000-4000-8000-0000000000aa', TODAY);
 const pool = () => getPool();
 
-describe('E-04 sample data seed (real PostgreSQL)', () => {
+async function newStudent(): Promise<string> {
+  const r = await pool().query<{ id: string }>(
+    "INSERT INTO students (display_name, time_zone, is_sample) VALUES ($1, 'Asia/Karachi', true) RETURNING id",
+    [`E-04 test ${randomUUID()}`]
+  );
+  return r.rows[0]!.id;
+}
+
+/** Every sample row of one Student, without the created_at / updated_at bookkeeping. */
+async function snapshot(studentId: string) {
+  const q = async (sql: string) => (await pool().query(sql, [studentId])).rows;
+  return {
+    courses: await q('SELECT id, name, code, is_sample FROM courses WHERE student_id = $1 ORDER BY id'),
+    ratings: await q('SELECT id, course_id, rating FROM course_skill_ratings WHERE student_id = $1 ORDER BY id'),
+    assignments: await q(
+      `SELECT id, course_id, title, description, official_deadline::text, student_deadline::text, status,
+              submission_status, effort_hours::text, effort_updated_at, last_activity_at, is_sample, version
+         FROM assignments WHERE student_id = $1 ORDER BY id`
+    ),
+    availability: await q('SELECT id, study_date::text, hours::text, source FROM study_availability WHERE student_id = $1 ORDER BY study_date'),
+    reports: await q(
+      `SELECT r.id, r.assignment_id, r.remaining_hours::text, r.reported_at
+         FROM remaining_hours_reports r JOIN assignments a ON a.id = r.assignment_id WHERE a.student_id = $1 ORDER BY r.id`
+    ),
+    subtasks: await q(
+      `SELECT s.id, s.assignment_id, s.title, s.is_completed, s.position
+         FROM subtasks s JOIN assignments a ON a.id = s.assignment_id WHERE a.student_id = $1 ORDER BY s.id`
+    ),
+    timers: await q(
+      `SELECT id, assignment_id, state, started_at, ended_at, paused_seconds, duration_seconds
+         FROM study_timer_sessions WHERE student_id = $1 ORDER BY id`
+    ),
+    overrides: await q(
+      `SELECT o.id, o.assignment_id, o.study_date::text, o.hours::text
+         FROM allocation_overrides o JOIN assignments a ON a.id = o.assignment_id WHERE a.student_id = $1 ORDER BY o.id`
+    )
+  };
+}
+
+describe('E-04 sample data: the dataset (pure)', () => {
+  it('E-04-AC2 has at least 50 assignments across exactly 5 courses, every course used', () => {
+    expect(data.assignments.length).toBeGreaterThanOrEqual(50);
+    expect(data.courses).toHaveLength(5);
+    for (const c of data.courses) {
+      expect(data.assignments.some((a) => a.courseId === c.id)).toBe(true);
+    }
+  });
+
+  it('E-04-AC3 has undated assignments, a Student-only deadline, and both deadlines on one', () => {
+    const undated = data.assignments.filter((a) => a.officialDeadline === null && a.studentDeadline === null);
+    expect(undated.length).toBeGreaterThanOrEqual(3);
+    expect(data.assignments.some((a) => a.officialDeadline === null && a.studentDeadline !== null)).toBe(true);
+    expect(data.assignments.some((a) => a.officialDeadline !== null && a.studentDeadline !== null)).toBe(true);
+    for (const a of data.assignments) {
+      if (a.studentDeadline !== null) expect(a.studentDeadline >= TODAY).toBe(true); // S-10 rule
+    }
+  });
+
+  it('E-04-AC4 has every status and every submission status, including combinations that disagree', () => {
+    const statuses = new Set(data.assignments.map((a) => a.status));
+    const submissions = new Set(data.assignments.map((a) => a.submissionStatus));
+    expect([...statuses].sort()).toEqual(['already_started', 'finished', 'not_started']);
+    expect([...submissions].sort()).toEqual(['not_submitted', 'submitted', 'unavailable']);
+    expect(data.assignments.some((a) => a.status === 'finished' && a.submissionStatus === 'not_submitted')).toBe(true);
+    expect(data.assignments.some((a) => a.status !== 'finished' && a.submissionStatus === 'submitted')).toBe(true);
+  });
+
+  it('E-04-AC5 has deadlines in the past, today, shared by two assignments, and weeks ahead', () => {
+    const deadlines = data.assignments.map((a) => a.officialDeadline).filter((d): d is string => d !== null);
+    expect(deadlines.some((d) => d < TODAY)).toBe(true);
+    expect(deadlines.filter((d) => d === TODAY)).toHaveLength(1);
+    const perDay = new Map<string, number>();
+    for (const d of deadlines) perDay.set(d, (perDay.get(d) ?? 0) + 1);
+    expect([...perDay.values()].some((n) => n >= 2)).toBe(true);
+    expect(deadlines.some((d) => d >= addDays(TODAY, 14))).toBe(true);
+  });
+
+  it('E-04-AC6 makes search testable: "Lab 3" appears in more than one course', () => {
+    const lab3 = data.assignments.filter((a) => a.title === 'Lab 3');
+    expect(new Set(lab3.map((a) => a.courseId)).size).toBeGreaterThanOrEqual(2);
+  });
+
+  it('E-04-AC7 fills every field: ratings with one unrated course, availability with blanks and a 0', () => {
+    expect(data.ratings).toHaveLength(4); // 5 courses, one unrated
+    expect(data.availability.length).toBeGreaterThan(0);
+    expect(data.availability.length).toBeLessThan(14); // some of the 14 days left blank (Unknown)
+    expect(data.availability.some((d) => d.hours === 0)).toBe(true);
+    expect(data.assignments.some((a) => a.effortHours !== null)).toBe(true);
+    expect(data.assignments.some((a) => a.effortHours === null)).toBe(true);
+    expect(data.reports.some((r) => r.remainingHours === 0)).toBe(true);
+    expect(data.subtasks.length).toBeGreaterThan(0);
+    expect(data.timerSessions.some((t) => t.durationSeconds === 0)).toBe(true);
+    expect(data.timerSessions.some((t) => t.pausedSeconds > 0)).toBe(true);
+    expect(data.overrides.length).toBeGreaterThan(0);
+  });
+
+  it('E-04-AC8 has one course whose last activity was 9 days ago while the others were active this week', () => {
+    const karachiDay = (ts: string) => ts.slice(0, 10); // timestamps are written with +05:00
+    const lastActivityDay = data.courses.map((c) => {
+      const days = data.assignments
+        .filter((a) => a.courseId === c.id && a.lastActivityAt !== null)
+        .map((a) => karachiDay(a.lastActivityAt!))
+        .sort();
+      return { name: c.name, last: days[days.length - 1] };
+    });
+    const quiet = lastActivityDay.filter((c) => c.last! < addDays(TODAY, -7));
+    expect(quiet).toEqual([{ name: 'Technical Writing', last: addDays(TODAY, -9) }]);
+  });
+
+  it('E-04-AC9 every value is within the data-model limits', () => {
+    const halfStep = (n: number) => n * 2 === Math.trunc(n * 2);
+    for (const a of data.assignments) {
+      if (a.effortHours !== null) expect(a.effortHours >= 0.5 && a.effortHours <= 200 && halfStep(a.effortHours)).toBe(true);
+      expect((a.effortHours === null) === (a.effortUpdatedAt === null)).toBe(true);
+    }
+    for (const d of data.availability) expect(d.hours >= 0 && d.hours <= 24 && halfStep(d.hours)).toBe(true);
+    for (const r of data.reports) expect(r.remainingHours >= 0 && r.remainingHours <= 200 && halfStep(r.remainingHours)).toBe(true);
+    for (const o of data.overrides) expect(o.hours > 0 && halfStep(o.hours)).toBe(true);
+    for (const s of data.subtasks) expect(s.title).toBe(s.title.trim());
+  });
+
+  it('E-04-AC10 is deterministic and every id is unique', () => {
+    expect(buildSampleData(data.studentId, TODAY)).toEqual(data);
+    const ids = [
+      ...data.courses, ...data.ratings, ...data.assignments, ...data.availability,
+      ...data.reports, ...data.subtasks, ...data.timerSessions, ...data.overrides
+    ].map((row) => row.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    // Different Students never share ids.
+    const other = buildSampleData('00000000-0000-4000-8000-0000000000bb', TODAY);
+    expect(other.assignments[0]!.id).not.toBe(data.assignments[0]!.id);
+  });
+});
+
+describe('E-04 sample data: loading into PostgreSQL', () => {
   beforeAll(async () => {
     await runMigrations(pool());
   });
-
   afterAll(async () => {
     await closePool();
   });
 
-  it('E-04-T1 seeds expected counts (>=50 assignments, 5 courses, 4 ratings, plus child tables)', async () => {
-    await seedSampleData(pool());
-
-    const counts = await pool().query<{
-      courses: number;
-      ratings: number;
-      assignments: number;
-      reports: number;
-      availability: number;
-      subtasks: number;
-      overrides: number;
-      timers: number;
-      baselines: number;
-    }>(
-      `SELECT
-        (SELECT count(*)::int FROM courses WHERE student_id = $1) AS courses,
-        (SELECT count(*)::int FROM course_skill_ratings WHERE student_id = $1) AS ratings,
-        (SELECT count(*)::int FROM assignments WHERE student_id = $1) AS assignments,
-        (SELECT count(*)::int FROM remaining_hours_reports r JOIN assignments a ON a.id = r.assignment_id WHERE a.student_id = $1) AS reports,
-        (SELECT count(*)::int FROM study_availability WHERE student_id = $1) AS availability,
-        (SELECT count(*)::int FROM subtasks s JOIN assignments a ON a.id = s.assignment_id WHERE a.student_id = $1) AS subtasks,
-        (SELECT count(*)::int FROM allocation_overrides o JOIN assignments a ON a.id = o.assignment_id WHERE a.student_id = $1) AS overrides,
-        (SELECT count(*)::int FROM study_timer_sessions WHERE student_id = $1) AS timers,
-        (SELECT count(*)::int FROM weekly_availability_baselines WHERE student_id = $1) AS baselines`,
-      [DEMO_STUDENT_ID]
-    );
-
-    const row = counts.rows[0];
-    expect(row.courses).toBe(5);
-    expect(row.ratings).toBe(4);
-    expect(row.assignments).toBeGreaterThanOrEqual(50);
-    expect(row.assignments).toBe(54);
-    expect(row.reports).toBeGreaterThanOrEqual(20);
-    expect(row.availability).toBe(10);
-    expect(row.subtasks).toBeGreaterThanOrEqual(5);
-    expect(row.overrides).toBeGreaterThanOrEqual(1);
-    expect(row.timers).toBeGreaterThanOrEqual(1);
-    expect(row.baselines).toBe(0);
+  it('E-04-AC1 loading twice gives the same rows, with no duplicates', async () => {
+    const studentId = await newStudent();
+    const first = await seedSampleData(pool(), { studentId, now: NOW });
+    const before = await snapshot(studentId);
+    const second = await seedSampleData(pool(), { studentId, now: NOW });
+    const after = await snapshot(studentId);
+    expect(second).toEqual(first);
+    expect(after).toEqual(before);
+    expect(after.assignments).toHaveLength(first.counts.assignments);
+    expect(after.courses).toHaveLength(5);
   });
 
-  it('E-04-T2 is idempotent: running twice yields identical counts, no duplicates, and stable IDs', async () => {
-    await seedSampleData(pool());
-    const firstAssignments = await pool().query<{ id: string }>(
-      'SELECT id FROM assignments WHERE student_id = $1 ORDER BY id',
-      [DEMO_STUDENT_ID]
-    );
-    const firstCourses = await pool().query<{ id: string }>(
-      'SELECT id FROM courses WHERE student_id = $1 ORDER BY id',
-      [DEMO_STUDENT_ID]
-    );
-
-    await seedSampleData(pool());
-    const secondAssignments = await pool().query<{ id: string }>(
-      'SELECT id FROM assignments WHERE student_id = $1 ORDER BY id',
-      [DEMO_STUDENT_ID]
-    );
-    const secondCourses = await pool().query<{ id: string }>(
-      'SELECT id FROM courses WHERE student_id = $1 ORDER BY id',
-      [DEMO_STUDENT_ID]
-    );
-
-    expect(secondAssignments.rows).toEqual(firstAssignments.rows);
-    expect(secondCourses.rows).toEqual(firstCourses.rows);
-
-    const dupes = await pool().query<{ count: number }>(
-      `SELECT count(*)::int AS count FROM (
-         SELECT course_id, title FROM assignments WHERE student_id = $1
-         GROUP BY course_id, title HAVING count(*) > 1
-       ) d`,
-      [DEMO_STUDENT_ID]
-    );
-    expect(dupes.rows[0].count).toBe(0);
+  it('E-04-AC2 database counts match the dataset and every row is marked as sample data', async () => {
+    const studentId = await newStudent();
+    const result = await seedSampleData(pool(), { studentId, now: NOW });
+    const snap = await snapshot(studentId);
+    expect(result.today).toBe(TODAY);
+    expect(snap.assignments.length).toBeGreaterThanOrEqual(50);
+    expect({
+      courses: snap.courses.length, ratings: snap.ratings.length, assignments: snap.assignments.length,
+      availability: snap.availability.length, reports: snap.reports.length, subtasks: snap.subtasks.length,
+      timerSessions: snap.timers.length, overrides: snap.overrides.length
+    }).toEqual(result.counts);
+    expect(snap.courses.every((c) => c.is_sample === true)).toBe(true);
+    expect(snap.assignments.every((a) => a.is_sample === true)).toBe(true);
+    expect(snap.timers.every((t) => t.state === 'stopped')).toBe(true);
   });
 
-  it('E-04-T3 preserves demo Student row and existing app_sessions across reseed', async () => {
-    await seedSampleData(pool());
-    const studentBefore = await pool().query(
-      'SELECT id, display_name, time_zone, is_sample, created_at FROM students WHERE id = $1',
-      [DEMO_STUDENT_ID]
-    );
-    const issued = await sessions.issue(DEMO_STUDENT_ID);
-
-    await seedSampleData(pool());
-
-    const studentAfter = await pool().query(
-      'SELECT id, display_name, time_zone, is_sample, created_at FROM students WHERE id = $1',
-      [DEMO_STUDENT_ID]
-    );
-    expect(studentAfter.rows[0]).toEqual(studentBefore.rows[0]);
-
-    const validated = await sessions.validate(issued.sessionId);
-    expect(validated?.studentId).toBe(DEMO_STUDENT_ID);
+  it('E-04-AC11 keeps the Student row and its sessions (no logout)', async () => {
+    const studentId = await newStudent();
+    const { sessionId } = await sessions.issue(studentId);
+    await seedSampleData(pool(), { studentId, now: NOW });
+    await seedSampleData(pool(), { studentId, now: NOW });
+    expect((await sessions.validate(sessionId))?.studentId).toBe(studentId);
   });
 
-  it('E-04-T4 covers undated, student-only, due-today, same-deadline pair, past-deadline, statuses, and Lab 3 search', async () => {
-    await seedSampleData(pool());
-    const today = getKarachiToday();
+  it('E-04-AC12 reload leaves non-sample courses and availability outside its 14 days untouched', async () => {
+    const studentId = await newStudent();
+    await pool().query("INSERT INTO courses (student_id, name, is_sample) VALUES ($1, 'My own course', false)", [studentId]);
+    await pool().query("INSERT INTO study_availability (student_id, study_date, hours) VALUES ($1, $2, 5)", [studentId, addDays(TODAY, -1)]);
+    await pool().query("INSERT INTO study_availability (student_id, study_date, hours) VALUES ($1, $2, 6)", [studentId, addDays(TODAY, 14)]);
+    // A Student edit inside the window is replaced by the sample value on reload.
+    await pool().query("INSERT INTO study_availability (student_id, study_date, hours) VALUES ($1, $2, 9)", [studentId, TODAY]);
+    await seedSampleData(pool(), { studentId, now: NOW });
 
-    const undated = await pool().query<{ n: number }>(
-      'SELECT count(*)::int AS n FROM assignments WHERE student_id = $1 AND official_deadline IS NULL AND student_deadline IS NULL',
-      [DEMO_STUDENT_ID]
+    const own = await pool().query("SELECT 1 FROM courses WHERE student_id = $1 AND name = 'My own course'", [studentId]);
+    expect(own.rowCount).toBe(1);
+    const days = await pool().query<{ study_date: string; hours: string }>(
+      'SELECT study_date::text, hours::text FROM study_availability WHERE student_id = $1 AND study_date IN ($2, $3, $4) ORDER BY study_date',
+      [studentId, addDays(TODAY, -1), TODAY, addDays(TODAY, 14)]
     );
-    expect(undated.rows[0].n).toBe(6);
-
-    const studentOnly = await pool().query<{ n: number }>(
-      'SELECT count(*)::int AS n FROM assignments WHERE student_id = $1 AND official_deadline IS NULL AND student_deadline >= $2::date',
-      [DEMO_STUDENT_ID, today]
-    );
-    expect(studentOnly.rows[0].n).toBe(2);
-
-    const dueToday = await pool().query<{ n: number }>(
-      'SELECT count(*)::int AS n FROM assignments WHERE student_id = $1 AND COALESCE(official_deadline, student_deadline) = $2::date',
-      [DEMO_STUDENT_ID, today]
-    );
-    expect(dueToday.rows[0].n).toBe(1);
-
-    const sameDeadline = await pool().query<{ course_id: string }>(
-      'SELECT DISTINCT course_id FROM assignments WHERE student_id = $1 AND official_deadline = $2::date',
-      [DEMO_STUDENT_ID, addDays(today, 3)]
-    );
-    expect(sameDeadline.rows.length).toBe(2);
-
-    const past = await pool().query<{ n: number }>(
-      'SELECT count(*)::int AS n FROM assignments WHERE student_id = $1 AND official_deadline < $2::date',
-      [DEMO_STUDENT_ID, today]
-    );
-    expect(past.rows[0].n).toBe(4);
-
-    const statuses = await pool().query<{ status: string }>(
-      'SELECT DISTINCT status FROM assignments WHERE student_id = $1',
-      [DEMO_STUDENT_ID]
-    );
-    expect(statuses.rows.map((r) => r.status).sort()).toEqual(['already_started', 'finished', 'not_started']);
-
-    const subStatuses = await pool().query<{ submission_status: string }>(
-      'SELECT DISTINCT submission_status FROM assignments WHERE student_id = $1',
-      [DEMO_STUDENT_ID]
-    );
-    expect(subStatuses.rows.map((r) => r.submission_status).sort()).toEqual([
-      'not_submitted',
-      'submitted',
-      'unavailable'
+    expect(days.rows).toEqual([
+      { study_date: addDays(TODAY, -1), hours: '5.0' },
+      { study_date: TODAY, hours: '2.0' },
+      { study_date: addDays(TODAY, 14), hours: '6.0' }
     ]);
-
-    const lab3 = await pool().query<{ title: string }>(
-      "SELECT title FROM assignments WHERE student_id = $1 AND title ILIKE '%lab 3%'",
-      [DEMO_STUDENT_ID]
-    );
-    expect(lab3.rows.length).toBe(2);
   });
 
-  it('E-04-T5 marks all courses/assignments as sample, has blank & 0 availability, 1 unrated course, and 9-day inactive Math', async () => {
-    await seedSampleData(pool());
-    const today = getKarachiToday();
+  it('E-04-AC13 reloading on the next day does not collide with rows from the day before', async () => {
+    const studentId = await newStudent();
+    await seedSampleData(pool(), { studentId, now: NOW });
+    const next = await seedSampleData(pool(), { studentId, now: new Date(NOW.getTime() + 24 * 3600 * 1000) });
+    expect(next.today).toBe(addDays(TODAY, 1));
+    const a = await pool().query('SELECT count(*)::int AS n FROM assignments WHERE student_id = $1', [studentId]);
+    expect(a.rows[0].n).toBe(next.counts.assignments);
+  });
 
-    const nonSampleCourses = await pool().query<{ n: number }>(
-      'SELECT count(*)::int AS n FROM courses WHERE student_id = $1 AND is_sample = false',
+  it('E-04-AC14 three reloads at once all succeed and leave one copy', async () => {
+    const studentId = await newStudent();
+    await Promise.all([1, 2, 3].map(() => seedSampleData(pool(), { studentId, now: NOW })));
+    const a = await pool().query('SELECT count(*)::int AS n FROM assignments WHERE student_id = $1', [studentId]);
+    expect(a.rows[0].n).toBe(data.assignments.length);
+  });
+
+  it('E-04-AC15 refuses an unknown Student instead of creating one', async () => {
+    await expect(seedSampleData(pool(), { studentId: randomUUID(), now: NOW })).rejects.toThrow(/does not exist/);
+  });
+
+  it('E-04-AC16 the demo Student was loaded by the test setup (read-only check)', async () => {
+    const r = await pool().query(
+      'SELECT count(*)::int AS n, bool_and(is_sample) AS all_sample FROM assignments WHERE student_id = $1',
       [DEMO_STUDENT_ID]
     );
-    expect(nonSampleCourses.rows[0].n).toBe(0);
-
-    const nonSampleAssignments = await pool().query<{ n: number }>(
-      'SELECT count(*)::int AS n FROM assignments WHERE student_id = $1 AND is_sample = false',
-      [DEMO_STUDENT_ID]
-    );
-    expect(nonSampleAssignments.rows[0].n).toBe(0);
-
-    const zeroAvail = await pool().query<{ n: number }>(
-      'SELECT count(*)::int AS n FROM study_availability WHERE student_id = $1 AND hours = 0',
-      [DEMO_STUDENT_ID]
-    );
-    expect(zeroAvail.rows[0].n).toBe(1);
-
-    const next7Avail = await pool().query<{ n: number }>(
-      'SELECT count(*)::int AS n FROM study_availability WHERE student_id = $1 AND study_date BETWEEN $2::date AND $3::date',
-      [DEMO_STUDENT_ID, today, addDays(today, 6)]
-    );
-    expect(next7Avail.rows[0].n).toBeLessThanOrEqual(5); // at least 2 blank in next 7 days
-
-    const unrated = await pool().query<{ name: string }>(
-      `SELECT c.name FROM courses c
-       LEFT JOIN course_skill_ratings r ON r.course_id = c.id
-       WHERE c.student_id = $1 AND r.id IS NULL`,
-      [DEMO_STUDENT_ID]
-    );
-    expect(unrated.rows.map((r) => r.name)).toEqual(['English Composition']);
-
-    const mathInactive = await pool().query<{ max_days: number; min_days: number }>(
-      `SELECT
-         min((($2::date) - (a.last_activity_at AT TIME ZONE 'Asia/Karachi')::date))::int AS min_days,
-         max((($2::date) - (a.last_activity_at AT TIME ZONE 'Asia/Karachi')::date))::int AS max_days
-       FROM assignments a
-       JOIN courses c ON c.id = a.course_id
-       WHERE a.student_id = $1 AND c.name = 'Mathematics'`,
-      [DEMO_STUDENT_ID, today]
-    );
-    expect(mathInactive.rows[0]).toEqual({ min_days: 9, max_days: 9 });
-
-    const nonStoppedTimers = await pool().query<{ n: number }>(
-      "SELECT count(*)::int AS n FROM study_timer_sessions WHERE student_id = $1 AND state <> 'stopped'",
-      [DEMO_STUDENT_ID]
-    );
-    expect(nonStoppedTimers.rows[0].n).toBe(0);
+    expect(r.rows[0]).toEqual({ n: data.assignments.length, all_sample: true });
+    expect(process.env.SAMPLE_DATA_TODAY).toBe('2027-01-11');
   });
 });
