@@ -1,53 +1,72 @@
-import { DEMO_STUDENT_ID } from './demo-student';
+import { createHash } from 'node:crypto';
 
-export type AssignmentStatus = 'not_started' | 'already_started' | 'finished';
+/**
+ * E-04 sample data (DL-28, DL-47, DL-55). Made-up courses and assignments; there is no
+ * Google Classroom in D4.
+ *
+ * Pure and deterministic: the same (studentId, today) always gives the same rows and the same
+ * ids, so re-running `npm run seed:sample` reloads identical data. Every date is relative to
+ * `today` (an Asia/Karachi calendar day) so the demo never goes stale.
+ *
+ * Nothing here talks to the database. The loader is load-sample-data.ts.
+ *
+ * What each slice can rely on (keep this list true when editing the specs below):
+ *  - S-01  availability for today + 13 days: some blank (Unknown), one explicit 0.
+ *  - S-02  5 courses; Programming Fundamentals is unrated.
+ *  - S-03  deadlines in the past, today, the same day for several assignments, and up to 3 weeks
+ *          ahead; effort entered, blank, and older/newer than the latest remaining-hours report.
+ *  - S-04  allocation overrides, including one on an explicit-0 day (over-allocated).
+ *  - S-07  remaining-hours history, including a report of 0.
+ *  - S-08  every status and submission status, including status and submission that disagree.
+ *  - S-09  Technical Writing has had no activity for 9 days, has work starting within 3 days,
+ *          and the other courses had activity in the last 7 days (DL-34 worked example).
+ *  - S-10  undated assignments, one with only a Student deadline, one with both deadlines.
+ *  - S-14  subtasks, some completed.
+ *  - S-15  stopped timer sessions, one with a pause and one of 0 seconds.
+ *  - S-16  "Lab 3" in three courses, "Quiz 2" in four, and a course without a code.
+ */
+
+export type Status = 'not_started' | 'already_started' | 'finished';
 export type SubmissionStatus = 'submitted' | 'not_submitted' | 'unavailable';
 
 export interface SampleCourse {
   id: string;
-  studentId: string;
+  key: string;
   name: string;
-  code: string;
-  isSample: true;
+  code: string | null;
 }
 
-export interface SampleCourseRating {
+export interface SampleRating {
   id: string;
-  studentId: string;
   courseId: string;
   rating: 1 | 2 | 3 | 4 | 5;
 }
 
 export interface SampleAssignment {
   id: string;
-  studentId: string;
   courseId: string;
   title: string;
   description: string;
   officialDeadline: string | null;
   studentDeadline: string | null;
-  status: AssignmentStatus;
+  status: Status;
   submissionStatus: SubmissionStatus;
   effortHours: number | null;
   effortUpdatedAt: string | null;
   lastActivityAt: string | null;
-  isSample: true;
-  version: 1;
 }
 
-export interface SampleRemainingHoursReport {
+export interface SampleAvailability {
+  id: string;
+  studyDate: string;
+  hours: number;
+}
+
+export interface SampleReport {
   id: string;
   assignmentId: string;
   remainingHours: number;
   reportedAt: string;
-}
-
-export interface SampleStudyAvailability {
-  id: string;
-  studentId: string;
-  studyDate: string;
-  hours: number;
-  source: 'individual';
 }
 
 export interface SampleSubtask {
@@ -56,1134 +75,353 @@ export interface SampleSubtask {
   title: string;
   isCompleted: boolean;
   position: number;
-  version: 1;
-}
-
-export interface SampleAllocationOverride {
-  id: string;
-  assignmentId: string;
-  studyDate: string;
-  hours: number;
-  version: 1;
 }
 
 export interface SampleTimerSession {
   id: string;
-  studentId: string;
   assignmentId: string;
-  state: 'stopped';
   startedAt: string;
-  pausedAt: null;
-  pausedSeconds: number;
   endedAt: string;
+  pausedSeconds: number;
   durationSeconds: number;
-  version: 1;
+}
+
+export interface SampleOverride {
+  id: string;
+  assignmentId: string;
+  studyDate: string;
+  hours: number;
 }
 
 export interface SampleDataset {
+  studentId: string;
   today: string;
+  /** Last day (inclusive) that sample availability covers. The loader reloads only this window. */
+  availabilityTo: string;
   courses: SampleCourse[];
-  ratings: SampleCourseRating[];
+  ratings: SampleRating[];
   assignments: SampleAssignment[];
-  reports: SampleRemainingHoursReport[];
-  availability: SampleStudyAvailability[];
+  availability: SampleAvailability[];
+  reports: SampleReport[];
   subtasks: SampleSubtask[];
-  allocationOverrides: SampleAllocationOverride[];
   timerSessions: SampleTimerSession[];
+  overrides: SampleOverride[];
 }
 
-function makeUuid(prefixHex4: string, index: number): string {
-  return `00000000-0000-4000-8000-${prefixHex4}${String(index).padStart(8, '0')}`;
-}
+// ---------------------------------------------------------------------------
+// Date helpers (Asia/Karachi has no daylight saving, so +05:00 is always right)
+// ---------------------------------------------------------------------------
 
-export function getKarachiToday(now: Date = new Date()): string {
+export function todayInKarachi(now: Date): string {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Karachi',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
   }).formatToParts(now);
-  const year = parts.find((p) => p.type === 'year')!.value;
-  const month = parts.find((p) => p.type === 'month')!.value;
-  const day = parts.find((p) => p.type === 'day')!.value;
-  return `${year}-${month}-${day}`;
+  const v = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return `${v.year}-${v.month}-${v.day}`;
 }
 
-export function addDays(dateStr: string, deltaDays: number): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const utc = new Date(Date.UTC(y, m - 1, d + deltaDays));
-  return utc.toISOString().slice(0, 10);
+export function addDays(date: string, days: number): string {
+  const [year, month, day] = date.split('-').map(Number) as [number, number, number];
+  const moved = new Date(Date.UTC(year, month - 1, day + days));
+  return [
+    moved.getUTCFullYear(),
+    String(moved.getUTCMonth() + 1).padStart(2, '0'),
+    String(moved.getUTCDate()).padStart(2, '0')
+  ].join('-');
 }
 
-function karachiTs(today: string, deltaDays: number, time = '10:00:00'): string {
-  return `${addDays(today, deltaDays)}T${time}+05:00`;
+/** A Karachi wall-clock time `daysAgo` days before `today`, as ISO 8601 with +05:00. */
+function at(today: string, daysAgo: number, hour: number, minute = 0): string {
+  const hh = String(hour).padStart(2, '0');
+  const mm = String(minute).padStart(2, '0');
+  return `${addDays(today, -daysAgo)}T${hh}:${mm}:00+05:00`;
 }
+
+/** Stable UUID (v4 layout) from a name, so reloads keep the same ids. */
+function stableId(studentId: string, name: string): string {
+  const hex = createHash('sha1').update(`d4-sample:${studentId}:${name}`).digest('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Courses (5). Programming Fundamentals is deliberately unrated (S-02).
+// Technical Writing has no course code (code is nullable).
+// ---------------------------------------------------------------------------
+
+const COURSES = [
+  { key: 'pf', name: 'Programming Fundamentals', code: 'CS1002', rating: null },
+  { key: 'dsa', name: 'Data Structures', code: 'CS2001', rating: 4 },
+  { key: 'db', name: 'Database Systems', code: 'CS2005', rating: 3 },
+  { key: 'dm', name: 'Discrete Mathematics', code: 'MT1008', rating: 5 },
+  { key: 'tw', name: 'Technical Writing', code: null, rating: 2 }
+] as const;
+
+type CourseKey = (typeof COURSES)[number]['key'];
+
+// ---------------------------------------------------------------------------
+// Assignments (56). Offsets are days from today: negative = past, 0 = today, null = none.
+//   own        Student-entered deadline offset (S-10). Must be today or later.
+//   act        days ago of the last status change (DL-34 activity). Omitted = no activity.
+//   effortAgo  days ago the manual effort was saved. Default 5.
+// Reports below also count as activity; last_activity_at takes whichever is newer.
+// ---------------------------------------------------------------------------
 
 interface AssignmentSpec {
-  courseIndex: 0 | 1 | 2 | 3 | 4;
+  c: CourseKey;
   title: string;
-  description: string;
-  officialDelta: number | null;
-  studentDelta: number | null;
-  status: AssignmentStatus;
-  submissionStatus: SubmissionStatus;
-  effortHours: number | null;
-  effortUpdatedDelta: number | null;
-  lastActivityDelta: number | null;
-  lastActivityTime?: string;
-  reports?: Array<{ remainingHours: number; deltaDays: number; time?: string }>;
+  due: number | null;
+  own?: number;
+  st: Status;
+  sub: SubmissionStatus;
+  effort: number | null;
+  effortAgo?: number;
+  act?: number;
 }
 
-export function buildSampleDataset(now: Date = new Date()): SampleDataset {
-  const today = getKarachiToday(now);
+const S = { ns: 'not_started', as: 'already_started', fi: 'finished' } as const;
+const U = { sub: 'submitted', no: 'not_submitted', un: 'unavailable' } as const;
 
-  const courseSpecs: Array<{ name: string; code: string; rating: 1 | 2 | 3 | 4 | 5 | null }> = [
-    { name: 'Programming Fundamentals', code: 'CS-101', rating: 4 },
-    { name: 'Mathematics', code: 'MT-101', rating: 2 },
-    { name: 'Applied Physics', code: 'PH-101', rating: 3 },
-    { name: 'Discrete Structures', code: 'CS-102', rating: 5 },
-    { name: 'English Composition', code: 'EN-101', rating: null }
-  ];
+const SPECS: AssignmentSpec[] = [
+  // --- Programming Fundamentals (12)
+  { c: 'pf', title: 'Lab 1', due: -35, st: S.fi, sub: U.sub, effort: 3, effortAgo: 40, act: 36 },
+  { c: 'pf', title: 'Lab 2', due: -21, st: S.fi, sub: U.sub, effort: 3, effortAgo: 26, act: 22 },
+  { c: 'pf', title: 'Lab 3', due: 4, st: S.ns, sub: U.no, effort: 4 },
+  { c: 'pf', title: 'Lab 4', due: 11, st: S.ns, sub: U.un, effort: 4 },
+  // Submitted but never marked Finished: status and submission are independent (S-08).
+  { c: 'pf', title: 'Quiz 1', due: -14, st: S.as, sub: U.sub, effort: 1, effortAgo: 18, act: 15 },
+  { c: 'pf', title: 'Quiz 2', due: 2, st: S.as, sub: U.no, effort: 2, act: 1 },
+  // Deadline passed while still unfinished (S-03 "deadline passed").
+  { c: 'pf', title: 'Calculator Program', due: -3, st: S.as, sub: U.no, effort: 6, act: 2 },
+  // Due today (S-03: a deadline today gives a shortage).
+  { c: 'pf', title: 'Pointers Practice', due: 0, st: S.ns, sub: U.no, effort: 3 },
+  { c: 'pf', title: 'Midterm Project', due: 14, st: S.ns, sub: U.un, effort: null },
+  { c: 'pf', title: 'Pseudocode Worksheet', due: null, st: S.ns, sub: U.un, effort: null },
+  { c: 'pf', title: 'Debugging Exercise', due: 8, st: S.ns, sub: U.un, effort: 2 },
+  // Only a Student-entered deadline (S-10).
+  { c: 'pf', title: 'Final Project Proposal', due: null, own: 20, st: S.ns, sub: U.un, effort: null },
 
-  const courses: SampleCourse[] = courseSpecs.map((c, idx) => ({
-    id: makeUuid('c001', idx + 1),
-    studentId: DEMO_STUDENT_ID,
-    name: c.name,
-    code: c.code,
-    isSample: true
-  }));
+  // --- Data Structures (11)
+  { c: 'dsa', title: 'Lab 1', due: -30, st: S.fi, sub: U.sub, effort: 3, effortAgo: 35, act: 31 },
+  { c: 'dsa', title: 'Lab 2', due: -16, st: S.fi, sub: U.sub, effort: 4, effortAgo: 21, act: 17 },
+  { c: 'dsa', title: 'Lab 3', due: 3, st: S.as, sub: U.no, effort: 5, act: 1 },
+  // Finished but not submitted.
+  { c: 'dsa', title: 'Linked List Assignment', due: -6, st: S.fi, sub: U.no, effort: 4, effortAgo: 11, act: 7 },
+  { c: 'dsa', title: 'Stack and Queue Assignment', due: 3, st: S.ns, sub: U.un, effort: 4 },
+  { c: 'dsa', title: 'Quiz 1', due: -9, st: S.fi, sub: U.sub, effort: 1, effortAgo: 14, act: 10 },
+  { c: 'dsa', title: 'Quiz 2', due: 9, st: S.ns, sub: U.un, effort: 2 },
+  { c: 'dsa', title: 'Tree Traversal Project', due: 14, st: S.as, sub: U.no, effort: 10, act: 2 },
+  { c: 'dsa', title: 'Graph Algorithms Project', due: 21, st: S.ns, sub: U.un, effort: 12 },
+  { c: 'dsa', title: 'Sorting Benchmark Report', due: null, st: S.ns, sub: U.un, effort: 3 },
+  { c: 'dsa', title: 'Course Project Milestone', due: 5, st: S.ns, sub: U.un, effort: null },
 
-  const ratings: SampleCourseRating[] = [];
-  courseSpecs.forEach((c, idx) => {
-    if (c.rating !== null) {
-      ratings.push({
-        id: makeUuid('c002', ratings.length + 1),
-        studentId: DEMO_STUDENT_ID,
-        courseId: courses[idx].id,
-        rating: c.rating
-      });
-    }
-  });
+  // --- Database Systems (11)
+  { c: 'db', title: 'Lab 1', due: -28, st: S.fi, sub: U.sub, effort: 3, effortAgo: 33, act: 29 },
+  { c: 'db', title: 'Lab 2', due: -14, st: S.fi, sub: U.sub, effort: 3, effortAgo: 19, act: 15 },
+  // Manual effort saved after the latest report: effective effort is the manual entry (DL-50).
+  { c: 'db', title: 'Lab 3', due: 4, st: S.as, sub: U.no, effort: 4, effortAgo: 1, act: 1 },
+  { c: 'db', title: 'ER Diagram Assignment', due: -8, st: S.fi, sub: U.sub, effort: 3, effortAgo: 13, act: 9 },
+  { c: 'db', title: 'SQL Queries Assignment', due: 7, st: S.ns, sub: U.un, effort: 5 },
+  { c: 'db', title: 'Normalization Quiz', due: 2, st: S.ns, sub: U.no, effort: 1.5 },
+  { c: 'db', title: 'Quiz 2', due: 10, st: S.ns, sub: U.un, effort: 1 },
+  { c: 'db', title: 'Database Design Project', due: 17, st: S.ns, sub: U.un, effort: 14 },
+  // Latest report is 0: no remaining effort, status unchanged (DL-50, DL-38).
+  { c: 'db', title: 'Indexing Lab Report', due: 1, st: S.as, sub: U.no, effort: 2, act: 1 },
+  { c: 'db', title: 'Transactions Worksheet', due: null, st: S.ns, sub: U.un, effort: null },
+  { c: 'db', title: 'Stored Procedures Task', due: 12, st: S.ns, sub: U.un, effort: 4 },
 
-  // 54 assignments: 11 / 11 / 11 / 11 / 10 across the 5 courses.
-  // Deadlines:
-  // - 6 with no deadline (official null, student null)
-  // - 2 with only student_deadline (official null, student >= today)
-  // - Exactly 1 due today (official = today)
-  // - 2 in different courses with same official deadline today+3 (CS-101 & MT-101)
-  // - 4 past deadlines (< today): 3 finished/submitted, 1 unfinished & past due
-  // - Remaining 39 spread over next ~6 weeks (today+1 .. today+42, excluding today)
-  const specs: AssignmentSpec[] = [
-    // --- Course 0: Programming Fundamentals (11) ---
-    {
-      courseIndex: 0,
-      title: 'Lab 1',
-      description: 'Variables, standard input/output, and basic arithmetic exercises.',
-      officialDelta: -6,
-      studentDelta: null,
-      status: 'finished',
-      submissionStatus: 'submitted',
-      effortHours: 2.0,
-      effortUpdatedDelta: -8,
-      lastActivityDelta: -7,
-      reports: [{ remainingHours: 0.5, deltaDays: -7 }]
-    },
-    {
-      courseIndex: 0,
-      title: 'Lab 2',
-      description: 'Conditional branching and loop control structures in C++.',
-      officialDelta: -3,
-      studentDelta: null,
-      status: 'finished',
-      submissionStatus: 'submitted',
-      effortHours: 2.5,
-      effortUpdatedDelta: -5,
-      lastActivityDelta: -4
-    },
-    {
-      courseIndex: 0,
-      title: 'Lab 3',
-      description: 'Functions, parameter passing, and modular decomposition.',
-      officialDelta: 3, // Same official deadline (today+3) as Mathematics Assignment
-      studentDelta: null,
-      status: 'already_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 4.0,
-      effortUpdatedDelta: -3,
-      lastActivityDelta: -2,
-      reports: [
-        { remainingHours: 3.5, deltaDays: -4 },
-        { remainingHours: 2.5, deltaDays: -2 } // newer than effortUpdatedAt
-      ]
-    },
-    {
-      courseIndex: 0,
-      title: 'Lab 4',
-      description: 'One-dimensional and two-dimensional array manipulation.',
-      officialDelta: 7,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 3.5,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 0,
-      title: 'Lab 5',
-      description: 'Pointers, dynamic memory allocation, and string processing.',
-      officialDelta: 14,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: 4.5,
-      effortUpdatedDelta: -1,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 0,
-      title: 'Quiz 1: Control Flow',
-      description: 'Short online quiz covering loops, switch statements, and scope.',
-      officialDelta: 0, // Exactly 1 assignment due today
-      studentDelta: null,
-      status: 'already_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 1.5,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: -1,
-      reports: [{ remainingHours: 0.5, deltaDays: -1 }]
-    },
-    {
-      courseIndex: 0,
-      title: 'Assignment 1: Grade Calculator',
-      description: 'Build a CLI program to compute weighted course grades from a file.',
-      officialDelta: 10,
-      studentDelta: null,
-      status: 'already_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 6.0,
-      effortUpdatedDelta: -1,
-      lastActivityDelta: -2,
-      reports: [{ remainingHours: 5.0, deltaDays: -2 }] // older than effortUpdatedAt
-    },
-    {
-      courseIndex: 0,
-      title: 'Assignment 2: Recursion Toolkit',
-      description: 'Implement recursive sorting and backtracking utilities with tests.',
-      officialDelta: 21,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 8.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 0,
-      title: 'Midterm Preparation Sheet',
-      description: 'Practice problems on memory layout, recursion, and complexity.',
-      officialDelta: 28,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: null,
-      effortUpdatedDelta: null,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 0,
-      title: 'Mini Project Proposal',
-      description: 'Draft a 1-page proposal for the end-of-semester console project.',
-      officialDelta: null,
-      studentDelta: 6, // Student-only deadline #1
-      status: 'already_started',
-      submissionStatus: 'unavailable',
-      effortHours: 2.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: -2
-    },
-    {
-      courseIndex: 0,
-      title: 'Optional Debugging Workshop',
-      description: 'Self-paced gdb and valgrind debugging exercises.',
-      officialDelta: null, // Undated #1
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: null,
-      effortUpdatedDelta: null,
-      lastActivityDelta: null
-    },
+  // --- Discrete Mathematics (11)
+  { c: 'dm', title: 'Problem Set 1', due: -27, st: S.fi, sub: U.sub, effort: 3, effortAgo: 32, act: 28 },
+  { c: 'dm', title: 'Problem Set 2', due: -20, st: S.fi, sub: U.sub, effort: 3, effortAgo: 25, act: 21 },
+  { c: 'dm', title: 'Problem Set 3', due: -6, st: S.fi, sub: U.sub, effort: 3, effortAgo: 11, act: 7 },
+  { c: 'dm', title: 'Problem Set 4', due: 8, st: S.as, sub: U.no, effort: 4, act: 1 },
+  { c: 'dm', title: 'Quiz 1', due: -10, st: S.fi, sub: U.sub, effort: 1, effortAgo: 15, act: 11 },
+  { c: 'dm', title: 'Quiz 2', due: 6, st: S.ns, sub: U.un, effort: 1 },
+  { c: 'dm', title: 'Proofs Assignment', due: 13, st: S.ns, sub: U.un, effort: 6 },
+  { c: 'dm', title: 'Graph Theory Assignment', due: null, st: S.ns, sub: U.un, effort: null },
+  { c: 'dm', title: 'Logic Puzzle Set', due: 1, st: S.ns, sub: U.no, effort: 2 },
+  { c: 'dm', title: 'Combinatorics Challenge', due: null, st: S.ns, sub: U.un, effort: 4 },
+  // Official AND Student deadline: the official one applies (data-model.md §2).
+  { c: 'dm', title: 'Make-up Quiz', due: 15, own: 10, st: S.ns, sub: U.un, effort: 1 },
 
-    // --- Course 1: Mathematics (11) ---
-    // Rule: every assignment's last_activity_at and latest report is exactly 9 days ago (-9),
-    // and it has an unfinished, unsubmitted assignment with a deadline within 3 days.
-    {
-      courseIndex: 1,
-      title: 'Assignment 1: Limits & Continuity',
-      description: 'Problem set on epsilon-delta proofs and one-sided limits.',
-      officialDelta: 3, // Same official deadline (today+3) as CS-101 Lab 3; unfinished & unsubmitted
-      studentDelta: null,
-      status: 'already_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 3.0,
-      effortUpdatedDelta: -11,
-      lastActivityDelta: -9,
-      reports: [
-        { remainingHours: 4.0, deltaDays: -12 },
-        { remainingHours: 2.5, deltaDays: -9 } // latest report 9 days ago
-      ]
-    },
-    {
-      courseIndex: 1,
-      title: 'Quiz 1: Differentiation Rules',
-      description: 'Chain rule, implicit differentiation, and related rates.',
-      officialDelta: -4,
-      studentDelta: null,
-      status: 'finished',
-      submissionStatus: 'not_submitted', // finished but not_submitted (past #3)
-      effortHours: 2.0,
-      effortUpdatedDelta: -10,
-      lastActivityDelta: -9,
-      reports: [{ remainingHours: 0, deltaDays: -10 }] // wait: latest report must be -9 for Math!
-    },
-    {
-      courseIndex: 1,
-      title: 'Assignment 2: Optimization Problems',
-      description: 'Applied maxima/minima and curve sketching exercises.',
-      officialDelta: 8,
-      studentDelta: null,
-      status: 'already_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 5.0,
-      effortUpdatedDelta: -10,
-      lastActivityDelta: -9,
-      reports: [{ remainingHours: 3.5, deltaDays: -9 }]
-    },
-    {
-      courseIndex: 1,
-      title: 'Quiz 2: Mean Value Theorem',
-      description: 'Rolle’s theorem, MVT applications, and L’Hôpital’s rule.',
-      officialDelta: 12,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 2.5,
-      effortUpdatedDelta: -10,
-      lastActivityDelta: -9
-    },
-    {
-      courseIndex: 1,
-      title: 'Assignment 3: Definite Integrals',
-      description: 'Riemann sums, Fundamental Theorem of Calculus, and substitution.',
-      officialDelta: 17,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 6.0,
-      effortUpdatedDelta: -10,
-      lastActivityDelta: -9,
-      reports: [{ remainingHours: 5.5, deltaDays: -9 }]
-    },
-    {
-      courseIndex: 1,
-      title: 'Midterm Review Packet',
-      description: 'Comprehensive calculus problem set covering chapters 1 through 4.',
-      officialDelta: 24,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: 10.0,
-      effortUpdatedDelta: -10,
-      lastActivityDelta: -9
-    },
-    {
-      courseIndex: 1,
-      title: 'Assignment 4: Integration by Parts',
-      description: 'Techniques of integration and trigonometric substitutions.',
-      officialDelta: 30,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 5.5,
-      effortUpdatedDelta: -10,
-      lastActivityDelta: -9
-    },
-    {
-      courseIndex: 1,
-      title: 'Quiz 3: Improper Integrals',
-      description: 'Convergence tests for improper integrals.',
-      officialDelta: 35,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: 2.0,
-      effortUpdatedDelta: -10,
-      lastActivityDelta: -9
-    },
-    {
-      courseIndex: 1,
-      title: 'Project: Modeling Growth Rates',
-      description: 'Differential equation modeling write-up with plots.',
-      officialDelta: 40,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 12.0,
-      effortUpdatedDelta: -10,
-      lastActivityDelta: -9
-    },
-    {
-      courseIndex: 1,
-      title: 'Extra Practice: Taylor Series',
-      description: 'Optional convergence radius and Maclaurin expansion problems.',
-      officialDelta: null, // Undated #2
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: null,
-      effortUpdatedDelta: null,
-      lastActivityDelta: -9
-    },
-    {
-      courseIndex: 1,
-      title: 'Formula Sheet Preparation',
-      description: 'Compile personal reference sheet for calculus identities.',
-      officialDelta: null, // Undated #3
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: 1.5,
-      effortUpdatedDelta: -10,
-      lastActivityDelta: -9
-    },
+  // --- Technical Writing (11). Last activity 9 days ago; nothing since (S-09, DL-34).
+  { c: 'tw', title: 'Memo Draft', due: -18, st: S.fi, sub: U.sub, effort: 2, effortAgo: 23, act: 19 },
+  { c: 'tw', title: 'Memo Final', due: -12, st: S.fi, sub: U.sub, effort: 2, effortAgo: 17, act: 13 },
+  { c: 'tw', title: 'Report Outline', due: -4, st: S.as, sub: U.no, effort: 3, effortAgo: 12, act: 9 },
+  { c: 'tw', title: 'Proposal Draft', due: 3, st: S.ns, sub: U.no, effort: 6 },
+  { c: 'tw', title: 'Technical Report', due: 10, st: S.ns, sub: U.un, effort: 8 },
+  { c: 'tw', title: 'Peer Review Exercise', due: 5, st: S.ns, sub: U.un, effort: 2 },
+  { c: 'tw', title: 'Presentation Slides', due: 16, st: S.ns, sub: U.un, effort: null },
+  { c: 'tw', title: 'Citation Quiz', due: 7, st: S.ns, sub: U.un, effort: 1 },
+  { c: 'tw', title: 'Writing Portfolio', due: null, st: S.ns, sub: U.un, effort: null },
+  { c: 'tw', title: 'Resume Assignment', due: -1, st: S.ns, sub: U.no, effort: 2 },
+  { c: 'tw', title: 'Email Etiquette Quiz', due: -22, st: S.fi, sub: U.sub, effort: 1, effortAgo: 27, act: 23 }
+];
 
-    // --- Course 2: Applied Physics (11) ---
-    // Rule: has activity yesterday (-1), and includes "Lab 3".
-    {
-      courseIndex: 2,
-      title: 'Lab 1: Vernier & Micrometer',
-      description: 'Measurement uncertainty and error propagation lab report.',
-      officialDelta: -2, // Past due unfinished #4
-      studentDelta: null,
-      status: 'already_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 3.0,
-      effortUpdatedDelta: -4,
-      lastActivityDelta: -1,
-      lastActivityTime: '15:00:00',
-      reports: [{ remainingHours: 1.5, deltaDays: -1, time: '15:00:00' }]
-    },
-    {
-      courseIndex: 2,
-      title: 'Lab 2: Projectile Motion',
-      description: 'Kinematics experiment analyzing range vs launch angle.',
-      officialDelta: 4,
-      studentDelta: null,
-      status: 'already_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 3.5,
-      effortUpdatedDelta: -1, // effort updated yesterday, older report at -3
-      lastActivityDelta: -1,
-      lastActivityTime: '16:00:00',
-      reports: [{ remainingHours: 2.5, deltaDays: -3 }]
-    },
-    {
-      courseIndex: 2,
-      title: 'Lab 3',
-      description: 'Newton’s second law and friction coefficient measurements.',
-      officialDelta: 9,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 4.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 2,
-      title: 'Assignment 1: Vectors & Kinematics',
-      description: '2D motion and relative velocity problem set.',
-      officialDelta: 5,
-      studentDelta: null,
-      status: 'finished',
-      submissionStatus: 'submitted',
-      effortHours: 3.0,
-      effortUpdatedDelta: -5,
-      lastActivityDelta: -2,
-      reports: [{ remainingHours: 0.5, deltaDays: -3 }]
-    },
-    {
-      courseIndex: 2,
-      title: 'Quiz 1: Newton’s Laws',
-      description: 'Free-body diagrams and tension systems.',
-      officialDelta: 11,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 2.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 2,
-      title: 'Assignment 2: Work & Energy',
-      description: 'Conservation of mechanical energy and power calculations.',
-      officialDelta: 16,
-      studentDelta: null,
-      status: 'already_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 4.5,
-      effortUpdatedDelta: -3,
-      lastActivityDelta: -1,
-      reports: [{ remainingHours: 0, deltaDays: -1 }] // Report of 0 on unfinished assignment!
-    },
-    {
-      courseIndex: 2,
-      title: 'Midterm: Mechanics & Waves',
-      description: 'In-class midterm covering chapters 1–6.',
-      officialDelta: 22,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: 14.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 2,
-      title: 'Assignment 3: Rotational Dynamics',
-      description: 'Moment of inertia, torque, and angular momentum problems.',
-      officialDelta: 29,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 5.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 2,
-      title: 'Lab 4: Simple Harmonic Motion',
-      description: 'Pendulum and spring oscillation period analysis.',
-      officialDelta: 34,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: null,
-      effortUpdatedDelta: null,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 2,
-      title: 'Project: Solar Cell Efficiency',
-      description: 'Experimental setup and data report on photovoltaic output.',
-      officialDelta: 41,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 16.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 2,
-      title: 'Reading: Thermodynamics Primer',
-      description: 'Background reading notes on zeroth and first laws.',
-      officialDelta: null, // Undated #4
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: null,
-      effortUpdatedDelta: null,
-      lastActivityDelta: null
-    },
+// Remaining-hours reports (S-07). `ago` is days ago, `hour` is Karachi time.
+const REPORT_SPECS: Array<{ c: CourseKey; title: string; remaining: number; ago: number; hour: number }> = [
+  { c: 'pf', title: 'Quiz 2', remaining: 1.5, ago: 2, hour: 14 },
+  { c: 'pf', title: 'Quiz 2', remaining: 1, ago: 1, hour: 20 },
+  { c: 'pf', title: 'Calculator Program', remaining: 4, ago: 2, hour: 16 },
+  // Reports newer than the manual effort: effective effort is the latest report (DL-50).
+  { c: 'dsa', title: 'Lab 3', remaining: 4, ago: 3, hour: 15 },
+  { c: 'dsa', title: 'Lab 3', remaining: 3.5, ago: 1, hour: 18 },
+  { c: 'dsa', title: 'Tree Traversal Project', remaining: 9, ago: 4, hour: 13 },
+  { c: 'dsa', title: 'Tree Traversal Project', remaining: 8, ago: 2, hour: 17 },
+  // Older than the manual effort (saved 1 day ago): effective effort is the manual entry.
+  { c: 'db', title: 'Lab 3', remaining: 2, ago: 3, hour: 11 },
+  { c: 'db', title: 'Indexing Lab Report', remaining: 0.5, ago: 2, hour: 19 },
+  { c: 'db', title: 'Indexing Lab Report', remaining: 0, ago: 1, hour: 22 },
+  { c: 'dm', title: 'Problem Set 4', remaining: 3, ago: 1, hour: 21 },
+  { c: 'tw', title: 'Report Outline', remaining: 2.5, ago: 9, hour: 12 }
+];
 
-    // --- Course 3: Discrete Structures (11) ---
-    {
-      courseIndex: 3,
-      title: 'Assignment 1: Propositional Logic',
-      description: 'Truth tables, logical equivalences, and natural deduction.',
-      officialDelta: 2,
-      studentDelta: null,
-      status: 'already_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 3.0,
-      effortUpdatedDelta: -4,
-      lastActivityDelta: -2,
-      reports: [
-        { remainingHours: 2.5, deltaDays: -3 },
-        { remainingHours: 1.5, deltaDays: -2 }
-      ]
-    },
-    {
-      courseIndex: 3,
-      title: 'Quiz 1: Predicates & Quantifiers',
-      description: 'Translating English statements into predicate logic.',
-      officialDelta: 6,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 2.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 3,
-      title: 'Assignment 2: Set Theory & Relations',
-      description: 'Equivalence relations, partial orders, and Hasse diagrams.',
-      officialDelta: 13,
-      studentDelta: null,
-      status: 'already_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 4.5,
-      effortUpdatedDelta: -1,
-      lastActivityDelta: -3,
-      reports: [{ remainingHours: 3.0, deltaDays: -3 }] // older than effortUpdatedAt
-    },
-    {
-      courseIndex: 3,
-      title: 'Assignment 3: Mathematical Induction',
-      description: 'Weak, strong, and structural induction proof exercises.',
-      officialDelta: 18,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 5.5,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 3,
-      title: 'Quiz 2: Counting & Pigeonhole',
-      description: 'Permutations, combinations, and pigeonhole principle.',
-      officialDelta: 23,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: 2.5,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 3,
-      title: 'Midterm: Logic & Proofs',
-      description: 'Midterm exam covering logic, sets, functions, and induction.',
-      officialDelta: 26,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: 12.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 3,
-      title: 'Assignment 4: Recurrence Relations',
-      description: 'Solving linear homogeneous and non-homogeneous recurrences.',
-      officialDelta: 32,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 6.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 3,
-      title: 'Assignment 5: Graph Theory',
-      description: 'Eulerian paths, Hamiltonian cycles, and planar graphs.',
-      officialDelta: 37,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: null,
-      effortUpdatedDelta: null,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 3,
-      title: 'Project: Shortest Path Visualizer',
-      description: 'Document and trace Dijkstra’s algorithm on sample graphs.',
-      officialDelta: 42,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: 20.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 3,
-      title: 'Proof Writing Practice Set',
-      description: 'Self-study proof exercises on divisibility and modular arithmetic.',
-      officialDelta: null,
-      studentDelta: 13, // Student-only deadline #2
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: 3.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 3,
-      title: 'Bonus: Boolean Algebra Notes',
-      description: 'Optional reading on Karnaugh maps and logic minimization.',
-      officialDelta: null, // Undated #5
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: null,
-      effortUpdatedDelta: null,
-      lastActivityDelta: null
-    },
+const SUBTASK_SPECS: Array<{ c: CourseKey; title: string; items: Array<[string, boolean]> }> = [
+  { c: 'pf', title: 'Lab 3', items: [['Read the requirements', true], ['Write the program', false], ['Test with sample input', false]] },
+  {
+    c: 'dsa',
+    title: 'Tree Traversal Project',
+    items: [
+      ['Read the requirements', true],
+      ['Build the tree class', true],
+      ['Implement in-order traversal', false],
+      ['Implement level-order traversal', false],
+      ['Write the report', false]
+    ]
+  },
+  { c: 'dsa', title: 'Lab 3', items: [['Read the requirements', true], ['Complete implementation', false]] },
+  { c: 'db', title: 'Database Design Project', items: [['Choose a domain', false], ['Draw the ER diagram', false], ['Write the schema', false], ['Load test data', false]] },
+  { c: 'dm', title: 'Proofs Assignment', items: [['Prove the first claim', false], ['Prove the second claim', false]] },
+  { c: 'tw', title: 'Proposal Draft', items: [['Outline the problem', true], ['Write the budget section', false], ['Proofread', false]] }
+];
 
-    // --- Course 4: English Composition (10, NO rating row = unrated) ---
-    {
-      courseIndex: 4,
-      title: 'Diagnostic Essay',
-      description: 'Short baseline persuasive essay on technology in education.',
-      officialDelta: 1,
-      studentDelta: null,
-      status: 'finished',
-      submissionStatus: 'submitted',
-      effortHours: 2.0,
-      effortUpdatedDelta: -5,
-      lastActivityDelta: -3
-    },
-    {
-      courseIndex: 4,
-      title: 'Reading Response 1',
-      description: '500-word critical response to assigned rhetorical essay.',
-      officialDelta: 4,
-      studentDelta: null,
-      status: 'already_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 2.0,
-      effortUpdatedDelta: -3,
-      lastActivityDelta: -2,
-      reports: [{ remainingHours: 1.0, deltaDays: -2 }]
-    },
-    {
-      courseIndex: 4,
-      title: 'Grammar & Style Quiz',
-      description: 'Online quiz on clause structure, punctuation, and conciseness.',
-      officialDelta: 7,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 1.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 4,
-      title: 'Annotated Bibliography',
-      description: 'Collect and annotate 6 peer-reviewed sources for research paper.',
-      officialDelta: 15,
-      studentDelta: null,
-      status: 'already_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 5.0,
-      effortUpdatedDelta: -4,
-      lastActivityDelta: -2,
-      reports: [
-        { remainingHours: 4.5, deltaDays: -3 },
-        { remainingHours: 3.5, deltaDays: -2 }
-      ]
-    },
-    {
-      courseIndex: 4,
-      title: 'Research Paper Outline',
-      description: 'Structured thesis statement and section-by-section outline.',
-      officialDelta: 19,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: null,
-      effortUpdatedDelta: null,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 4,
-      title: 'Midterm: Rhetorical Analysis',
-      description: 'Timed in-class rhetorical analysis of an unseen passage.',
-      officialDelta: 25,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: 4.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 4,
-      title: 'Peer Review Workshop',
-      description: 'Provide written feedback on two classmates’ rough drafts.',
-      officialDelta: 31,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: null,
-      effortUpdatedDelta: null,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 4,
-      title: 'Final Research Paper Draft',
-      description: 'Complete 2500-word research paper with APA citations.',
-      officialDelta: 38,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'not_submitted',
-      effortHours: 15.0,
-      effortUpdatedDelta: -2,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 4,
-      title: 'Oral Presentation Slides',
-      description: 'Prepare 8 slides summarizing research findings.',
-      officialDelta: 42,
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: null,
-      effortUpdatedDelta: null,
-      lastActivityDelta: null
-    },
-    {
-      courseIndex: 4,
-      title: 'Portfolio Reflection Notes',
-      description: 'Unscheduled brainstorming notes for end-of-term portfolio.',
-      officialDelta: null, // Undated #6
-      studentDelta: null,
-      status: 'not_started',
-      submissionStatus: 'unavailable',
-      effortHours: null,
-      effortUpdatedDelta: null,
-      lastActivityDelta: null
-    }
-  ];
+// Stopped study sessions (S-15). duration = (end - start) - paused, as the server computes it.
+// Only stopped sessions are seeded: a seeded running timer would keep running forever.
+const TIMER_SPECS: Array<{ c: CourseKey; title: string; ago: number; hour: number; running: number; paused: number }> = [
+  { c: 'pf', title: 'Calculator Program', ago: 3, hour: 10, running: 1800, paused: 0 },
+  { c: 'pf', title: 'Calculator Program', ago: 2, hour: 15, running: 2700, paused: 300 },
+  { c: 'dsa', title: 'Lab 3', ago: 2, hour: 16, running: 3600, paused: 0 },
+  { c: 'db', title: 'Indexing Lab Report', ago: 1, hour: 18, running: 0, paused: 0 },
+  { c: 'dm', title: 'Problem Set 4', ago: 1, hour: 20, running: 1200, paused: 120 }
+];
 
-  // Fix Quiz 1: Differentiation Rules (Mathematics) so its report is also at -9 days ago
-  // (already noted in comment above; update it cleanly here)
-  const mathQuiz1 = specs.find((s) => s.courseIndex === 1 && s.title === 'Quiz 1: Differentiation Rules');
-  if (mathQuiz1 && mathQuiz1.reports) {
-    mathQuiz1.reports = [
-      { remainingHours: 1.0, deltaDays: -11 },
-      { remainingHours: 0.5, deltaDays: -9 }
-    ];
-  }
+// Student overrides of the suggested allocation (S-04). `day` is days from today.
+const OVERRIDE_SPECS: Array<{ c: CourseKey; title: string; day: number; hours: number }> = [
+  { c: 'dsa', title: 'Lab 3', day: 0, hours: 1.5 },
+  { c: 'db', title: 'Lab 3', day: 3, hours: 1 },
+  // Day 1 has 0 available hours: the override is kept and the day is over-allocated (DL-51).
+  { c: 'pf', title: 'Lab 3', day: 1, hours: 1 }
+];
 
-  // Add a few more assignments with reports so ~20 assignments have reports total
-  const extraReportTargets: Array<{ title: string; reports: Array<{ remainingHours: number; deltaDays: number }> }> = [
-    {
-      title: 'Lab 4',
-      reports: [{ remainingHours: 3.0, deltaDays: -3 }] // older than effortUpdatedDelta (-2)
-    },
-    {
-      title: 'Assignment 2: Recursion Toolkit',
-      reports: [{ remainingHours: 7.5, deltaDays: -1 }] // newer than effortUpdatedDelta (-2)
-    },
-    {
-      title: 'Assignment 3: Definite Integrals',
-      reports: [
-        { remainingHours: 6.0, deltaDays: -12 },
-        { remainingHours: 5.5, deltaDays: -9 }
-      ]
-    },
-    {
-      title: 'Midterm Review Packet',
-      reports: [{ remainingHours: 9.0, deltaDays: -9 }]
-    },
-    {
-      title: 'Assignment 4: Integration by Parts',
-      reports: [{ remainingHours: 5.0, deltaDays: -9 }]
-    },
-    {
-      title: 'Lab 3', // Applied Physics Lab 3? Wait: CS-101 also has Lab 3; match by courseIndex below if needed
-      reports: []
-    },
-    {
-      title: 'Quiz 1: Newton’s Laws',
-      reports: [{ remainingHours: 1.5, deltaDays: -3 }] // older than effortUpdatedDelta (-2)
-    },
-    {
-      title: 'Assignment 3: Mathematical Induction',
-      reports: [{ remainingHours: 5.0, deltaDays: -1 }] // newer than effortUpdatedDelta (-2)
-    },
-    {
-      title: 'Midterm: Logic & Proofs',
-      reports: [{ remainingHours: 11.0, deltaDays: -3 }] // older than effortUpdatedDelta (-2)
-    },
-    {
-      title: 'Final Research Paper Draft',
-      reports: [{ remainingHours: 14.0, deltaDays: -1 }] // newer than effortUpdatedDelta (-2)
-    },
-    {
-      title: 'Midterm: Rhetorical Analysis',
-      reports: [{ remainingHours: 3.5, deltaDays: -3 }] // older than effortUpdatedDelta (-2)
-    }
-  ];
+// Availability for today and the next 13 days. null = no row = Unknown (not zero).
+// Day 1 is an explicit 0, which is different from the blank days.
+const AVAILABILITY_PATTERN: Array<number | null> = [2, 0, null, 1.5, 3, null, 2, 4, null, 2.5, 0, 3, null, 2];
 
-  for (const target of extraReportTargets) {
-    if (target.reports.length === 0) continue;
-    const found = specs.find((s) => s.title === target.title);
-    if (found && !found.reports) {
-      found.reports = target.reports;
+// ---------------------------------------------------------------------------
+// Builder
+// ---------------------------------------------------------------------------
+
+export function buildSampleData(studentId: string, today: string): SampleDataset {
+  const id = (name: string) => stableId(studentId, name);
+  const courseId = (key: CourseKey) => id(`course:${key}`);
+  const assignmentId = (key: CourseKey, title: string) => id(`assignment:${key}:${title}`);
+  const courseName = (key: CourseKey) => COURSES.find((c) => c.key === key)!.name;
+
+  const courses: SampleCourse[] = COURSES.map((c) => ({ id: courseId(c.key), key: c.key, name: c.name, code: c.code }));
+
+  const ratings: SampleRating[] = COURSES.flatMap((c) =>
+    c.rating === null ? [] : [{ id: id(`rating:${c.key}`), courseId: courseId(c.key), rating: c.rating }]
+  );
+
+  // Latest report per assignment, so last_activity_at is never older than a report (DL-34).
+  const latestReport = new Map<string, { ago: number; hour: number }>();
+  for (const r of REPORT_SPECS) {
+    const key = assignmentId(r.c, r.title);
+    const known = latestReport.get(key);
+    if (!known || r.ago < known.ago || (r.ago === known.ago && r.hour > known.hour)) {
+      latestReport.set(key, { ago: r.ago, hour: r.hour });
     }
   }
 
-  const assignments: SampleAssignment[] = [];
-  const reports: SampleRemainingHoursReport[] = [];
-
-  specs.forEach((s, idx) => {
-    const id = makeUuid('a001', idx + 1);
-    assignments.push({
-      id,
-      studentId: DEMO_STUDENT_ID,
-      courseId: courses[s.courseIndex].id,
+  const assignments: SampleAssignment[] = SPECS.map((s) => {
+    const aid = assignmentId(s.c, s.title);
+    let activity = s.act === undefined ? null : { ago: s.act, hour: 12 };
+    const report = latestReport.get(aid);
+    if (report && (!activity || report.ago < activity.ago || (report.ago === activity.ago && report.hour > activity.hour))) {
+      activity = report;
+    }
+    return {
+      id: aid,
+      courseId: courseId(s.c),
       title: s.title,
-      description: s.description,
-      officialDeadline: s.officialDelta !== null ? addDays(today, s.officialDelta) : null,
-      studentDeadline: s.studentDelta !== null ? addDays(today, s.studentDelta) : null,
-      status: s.status,
-      submissionStatus: s.submissionStatus,
-      effortHours: s.effortHours,
-      effortUpdatedAt: s.effortUpdatedDelta !== null ? karachiTs(today, s.effortUpdatedDelta, '09:00:00') : null,
-      lastActivityAt:
-        s.lastActivityDelta !== null
-          ? karachiTs(today, s.lastActivityDelta, s.lastActivityTime ?? '10:00:00')
-          : null,
-      isSample: true,
-      version: 1
-    });
-
-    if (s.reports) {
-      for (const r of s.reports) {
-        reports.push({
-          id: makeUuid('b001', reports.length + 1),
-          assignmentId: id,
-          remainingHours: r.remainingHours,
-          reportedAt: karachiTs(today, r.deltaDays, r.time ?? '10:00:00')
-        });
-      }
-    }
+      description: `${s.title} for ${courseName(s.c)}. Sample data: made up for the D4 demo, not imported from Google Classroom.`,
+      officialDeadline: s.due === null ? null : addDays(today, s.due),
+      studentDeadline: s.own === undefined ? null : addDays(today, s.own),
+      status: s.st,
+      submissionStatus: s.sub,
+      effortHours: s.effort,
+      effortUpdatedAt: s.effort === null ? null : at(today, s.effortAgo ?? 5, 9),
+      lastActivityAt: activity ? at(today, activity.ago, activity.hour) : null
+    };
   });
 
-  // study_availability: 14 days starting today, source = 'individual'.
-  // 4 days blank (2 in today..today+6: +2, +5; 2 in +7..+13: +9, +12).
-  // 1 day explicit 0 (+6).
-  const availabilitySpec: Array<{ deltaDays: number; hours: number }> = [
-    { deltaDays: 0, hours: 2.5 },
-    { deltaDays: 1, hours: 3.0 },
-    // +2 blank (Unknown)
-    { deltaDays: 3, hours: 4.0 },
-    { deltaDays: 4, hours: 1.5 },
-    // +5 blank (Unknown)
-    { deltaDays: 6, hours: 0 }, // explicit 0
-    { deltaDays: 7, hours: 3.5 },
-    { deltaDays: 8, hours: 2.0 },
-    // +9 blank (Unknown)
-    { deltaDays: 10, hours: 4.5 },
-    { deltaDays: 11, hours: 3.0 },
-    // +12 blank (Unknown)
-    { deltaDays: 13, hours: 2.5 }
-  ];
+  // Keyed by date, not offset: rows before today survive a reload, so an offset key would collide
+  // with yesterday's row when the seed is run again the next day.
+  const availability: SampleAvailability[] = AVAILABILITY_PATTERN.flatMap((hours, offset) => {
+    const studyDate = addDays(today, offset);
+    return hours === null ? [] : [{ id: id(`availability:${studyDate}`), studyDate, hours }];
+  });
 
-  const availability: SampleStudyAvailability[] = availabilitySpec.map((a, idx) => ({
-    id: makeUuid('d001', idx + 1),
-    studentId: DEMO_STUDENT_ID,
-    studyDate: addDays(today, a.deltaDays),
-    hours: a.hours,
-    source: 'individual'
+  const reports: SampleReport[] = REPORT_SPECS.map((r, index) => ({
+    id: id(`report:${r.c}:${r.title}:${index}`),
+    assignmentId: assignmentId(r.c, r.title),
+    remainingHours: r.remaining,
+    reportedAt: at(today, r.ago, r.hour)
   }));
 
-  // Helper to look up assignment ID by courseIndex & title
-  const findAssignmentId = (courseIndex: number, title: string): string => {
-    const match = assignments.find((a) => a.courseId === courses[courseIndex].id && a.title === title);
-    if (!match) {
-      throw new Error(`Missing assignment ${title} in course ${courseIndex}`);
-    }
-    return match.id;
-  };
+  const subtasks: SampleSubtask[] = SUBTASK_SPECS.flatMap((spec) =>
+    spec.items.map(([title, isCompleted], index) => ({
+      id: id(`subtask:${spec.c}:${spec.title}:${index}`),
+      assignmentId: assignmentId(spec.c, spec.title),
+      title,
+      isCompleted,
+      position: index + 1
+    }))
+  );
 
-  // subtasks: 5 assignments with 2-5 subtasks each, trimmed titles, positions 1..n, mix of completed/open
-  const subtaskGroups: Array<{ courseIndex: number; title: string; items: Array<{ title: string; done: boolean }> }> = [
-    {
-      courseIndex: 0,
-      title: 'Lab 3',
-      items: [
-        { title: 'Review function prototype rules', done: true },
-        { title: 'Implement pass-by-reference swap', done: true },
-        { title: 'Write unit test cases', done: false },
-        { title: 'Verify edge cases and submit', done: false }
-      ]
-    },
-    {
-      courseIndex: 0,
-      title: 'Assignment 1: Grade Calculator',
-      items: [
-        { title: 'Parse CSV input lines', done: true },
-        { title: 'Compute weighted average', done: false },
-        { title: 'Format summary table', done: false }
-      ]
-    },
-    {
-      courseIndex: 1,
-      title: 'Assignment 1: Limits & Continuity',
-      items: [
-        { title: 'Solve problems 1-4', done: true },
-        { title: 'Write epsilon-delta proof for Q5', done: false }
-      ]
-    },
-    {
-      courseIndex: 2,
-      title: 'Lab 2: Projectile Motion',
-      items: [
-        { title: 'Tabulate launch angle measurements', done: true },
-        { title: 'Plot trajectory curve', done: true },
-        { title: 'Compute percentage error', done: false },
-        { title: 'Write conclusion paragraph', done: false },
-        { title: 'Proofread lab report PDF', done: false }
-      ]
-    },
-    {
-      courseIndex: 4,
-      title: 'Annotated Bibliography',
-      items: [
-        { title: 'Find 3 journal articles', done: true },
-        { title: 'Find 3 conference papers', done: false },
-        { title: 'Draft 150-word annotations', done: false }
-      ]
-    }
-  ];
+  const timerSessions: SampleTimerSession[] = TIMER_SPECS.map((t, index) => {
+    const start = new Date(at(today, t.ago, t.hour));
+    const end = new Date(start.getTime() + (t.running + t.paused) * 1000);
+    return {
+      id: id(`timer:${t.c}:${t.title}:${index}`),
+      assignmentId: assignmentId(t.c, t.title),
+      startedAt: start.toISOString(),
+      endedAt: end.toISOString(),
+      pausedSeconds: t.paused,
+      durationSeconds: t.running
+    };
+  });
 
-  const subtasks: SampleSubtask[] = [];
-  for (const group of subtaskGroups) {
-    const assignmentId = findAssignmentId(group.courseIndex, group.title);
-    group.items.forEach((item, posIdx) => {
-      subtasks.push({
-        id: makeUuid('e001', subtasks.length + 1),
-        assignmentId,
-        title: item.title.trim(),
-        isCompleted: item.done,
-        position: posIdx + 1,
-        version: 1
-      });
-    });
-  }
-
-  // allocation_overrides: positive 0.5 steps, within that day's availability minus other overrides,
-  // and never on blank or 0-hour days.
-  // Day +0 has 2.5 h: 1.0 + 1.0 = 2.0 <= 2.5
-  // Day +1 has 3.0 h: 1.5 <= 3.0
-  // Day +3 has 4.0 h: 2.0 <= 4.0
-  const allocationOverrides: SampleAllocationOverride[] = [
-    {
-      id: makeUuid('f001', 1),
-      assignmentId: findAssignmentId(0, 'Lab 3'),
-      studyDate: addDays(today, 0),
-      hours: 1.0,
-      version: 1
-    },
-    {
-      id: makeUuid('f001', 2),
-      assignmentId: findAssignmentId(1, 'Assignment 1: Limits & Continuity'),
-      studyDate: addDays(today, 0),
-      hours: 1.0,
-      version: 1
-    },
-    {
-      id: makeUuid('f001', 3),
-      assignmentId: findAssignmentId(3, 'Assignment 1: Propositional Logic'),
-      studyDate: addDays(today, 1),
-      hours: 1.5,
-      version: 1
-    },
-    {
-      id: makeUuid('f001', 4),
-      assignmentId: findAssignmentId(2, 'Lab 2: Projectile Motion'),
-      studyDate: addDays(today, 3),
-      hours: 2.0,
-      version: 1
-    }
-  ];
-
-  // study_timer_sessions: STOPPED sessions only, including one with duration 0.
-  const timerSessions: SampleTimerSession[] = [
-    {
-      id: makeUuid('1001', 1),
-      studentId: DEMO_STUDENT_ID,
-      assignmentId: findAssignmentId(0, 'Lab 3'),
-      state: 'stopped',
-      startedAt: karachiTs(today, -2, '18:00:00'),
-      pausedAt: null,
-      pausedSeconds: 300,
-      endedAt: karachiTs(today, -2, '18:50:00'),
-      durationSeconds: 2700,
-      version: 1
-    },
-    {
-      id: makeUuid('1001', 2),
-      studentId: DEMO_STUDENT_ID,
-      assignmentId: findAssignmentId(0, 'Quiz 1: Control Flow'),
-      state: 'stopped',
-      startedAt: karachiTs(today, -1, '20:00:00'),
-      pausedAt: null,
-      pausedSeconds: 0,
-      endedAt: karachiTs(today, -1, '20:25:00'),
-      durationSeconds: 1500,
-      version: 1
-    },
-    {
-      id: makeUuid('1001', 3),
-      studentId: DEMO_STUDENT_ID,
-      assignmentId: findAssignmentId(1, 'Assignment 1: Limits & Continuity'),
-      state: 'stopped',
-      startedAt: karachiTs(today, -9, '11:00:00'),
-      pausedAt: null,
-      pausedSeconds: 0,
-      endedAt: karachiTs(today, -9, '11:30:00'),
-      durationSeconds: 1800,
-      version: 1
-    },
-    {
-      id: makeUuid('1001', 4),
-      studentId: DEMO_STUDENT_ID,
-      assignmentId: findAssignmentId(2, 'Lab 2: Projectile Motion'),
-      state: 'stopped',
-      startedAt: karachiTs(today, -1, '16:15:00'),
-      pausedAt: null,
-      pausedSeconds: 0,
-      endedAt: karachiTs(today, -1, '16:15:00'),
-      durationSeconds: 0, // 0-second stopped session (DL-43)
-      version: 1
-    },
-    {
-      id: makeUuid('1001', 5),
-      studentId: DEMO_STUDENT_ID,
-      assignmentId: findAssignmentId(4, 'Annotated Bibliography'),
-      state: 'stopped',
-      startedAt: karachiTs(today, -2, '14:00:00'),
-      pausedAt: null,
-      pausedSeconds: 120,
-      endedAt: karachiTs(today, -2, '14:42:00'),
-      durationSeconds: 2400,
-      version: 1
-    }
-  ];
+  const overrides: SampleOverride[] = OVERRIDE_SPECS.map((o) => ({
+    id: id(`override:${o.c}:${o.title}:${o.day}`),
+    assignmentId: assignmentId(o.c, o.title),
+    studyDate: addDays(today, o.day),
+    hours: o.hours
+  }));
 
   return {
+    studentId,
     today,
+    availabilityTo: addDays(today, AVAILABILITY_PATTERN.length - 1),
     courses,
     ratings,
     assignments,
-    reports,
     availability,
+    reports,
     subtasks,
-    allocationOverrides,
-    timerSessions
+    timerSessions,
+    overrides
   };
 }
