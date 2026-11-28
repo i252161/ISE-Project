@@ -7,7 +7,7 @@ import { AssignmentListPage } from './AssignmentListPage';
  * new packages). `#/assignments` (or no hash) → list, `#/assignments/<id>` → detail.
  * Renders nothing for any other hash, so other pages (#/availability, #/courses) can show instead.
  */
-function useHash(): string {
+export function useHash(): string {
   const [hash, setHash] = useState(() => window.location.hash);
   useEffect(() => {
     const onChange = () => setHash(window.location.hash);

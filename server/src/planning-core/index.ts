@@ -14,11 +14,15 @@ export { recalculateStudentPlan } from './recalculate';
 export * as assignments from './assignments/index';
 
 // --- Slice exports (one line per slice, DL-55) ---
-// [S-01] Availability planning exports
+export * as availability from './availability/index';
 // [S-02] Course rating exports
 // [S-03] Start-by date calculation exports
+export { computeStudentPlan, updateAssignmentEffort } from './start-by/service';
+export type { AssignmentPlanningResult, PlanningState, StudentPlanResult } from './start-by/r1b';
 // [S-04] Allocation & shortage exports
 // [S-07] Remaining hours exports
+export { submitRemainingHours, validateRemainingHoursBody } from './remaining-hours/service';
+export type { RemainingHoursReport, SubmitRemainingHoursResult } from './remaining-hours/service';
 // [S-08] Assignment status exports
 // [S-09] Course-balance & start-by warning exports
 // [S-10] Manual deadline exports

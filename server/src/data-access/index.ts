@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import { createAssignmentReads } from './assignments';
 import { runMigrations } from './migrate';
 import { createSessions } from './sessions';
+import { createAvailability } from './availability';
 
 let pool: Pool | null = null;
 
@@ -29,6 +30,23 @@ export async function closePool(): Promise<void> {
  * Implemented in sessions.ts (E-02).
  */
 export const sessions = createSessions(() => getPool());
+
+// --- S-01 availability data access (DL-55 marked line) ---
+export const availability = createAvailability(() => getPool());
+
+// [S-03] Start-by date & manual effort queries
+export { startByQueries } from './start-by/queries';
+export type {
+  AssignmentEffortSnapshot,
+  AssignmentInputRow,
+  AvailabilityInputRow,
+  PlanningTx,
+  StudentPlanningInputs
+} from './start-by/queries';
+
+// [S-07] Remaining hours report queries
+export { remainingHoursQueries } from './remaining-hours/queries';
+export type { RemainingHoursReportRow, InsertRemainingHoursTxResult } from './remaining-hours/queries';
 
 /**
  * Read-only assignment queries for Planning Core (E-05). Not for the API Layer (agent.md §4.3).
