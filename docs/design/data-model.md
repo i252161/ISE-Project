@@ -1,7 +1,7 @@
 # E-03 Data Model Contract
 
 **Project:** AI Academic Deadline Planner (D4)  
-**Status:** Design artefact for peer review; implementation is deferred until E-01 is merged.  
+**Status:** Design artefact for peer review (reviewer: Subhan, DL-56). E-01 is merged, so the foundation migration `0001_foundation.sql` now exists and matches this document. Drafted by Rehan; completed against plan.md §7 (see §7 below).  
 **Database:** PostgreSQL. **Migration owner:** Data Access Layer. **Time zone:** `Asia/Karachi`.
 
 ## 1. Contract rules
@@ -51,18 +51,16 @@ Unique: `(student_id, name)`.
 | `description` | text | Nullable |
 | `official_deadline` | date | Nullable; authoritative when present |
 | `student_deadline` | date | Nullable; used only when official deadline is absent |
-| `status` | text | `Not Started`, `Already Started`, `Finished` |
-| `submission_status` | text | `Submitted`, `Not Submitted`, `Unavailable` |
+| `status` | text | `not_started` (default), `already_started`, `finished`. Same values as the API |
+| `submission_status` | text | `submitted`, `not_submitted`, `unavailable` (default). `unavailable` is not `not_submitted`. Read-only in D4: it comes from labelled sample data (S-08, FR-10) |
 | `effort_hours` | numeric(5,1) | Nullable; Student-entered effort, 0.5–200 by 0.5 |
 | `effort_updated_at` | timestamptz | Nullable; used to compare with latest remaining-hours report |
 | `last_activity_at` | timestamptz | Nullable; activity as defined in DL-34 |
-| `is_sample` | boolean | Required |
-| `version` | integer | Required, default 1; incremented on every change (ADR-002, rule 8) |
+| `is_sample` | boolean | Required, default false |
+| `version` | integer | Required, default 1. Incremented on every Student write; a write based on an old version fails (ADR-002 rule 8; API rules in `api-contract.md` §1.1). A `last_activity_at` touch from a remaining-hours report does not increment it |
 | `created_at`, `updated_at` | timestamptz | Required |
 
 The applicable deadline is `official_deadline` when present, otherwise `student_deadline`. A Student-entered deadline must be today or later. AI estimates and unreliable-estimate flags are not part of D4.
-
-The API uses snake_case codes (`not_started`, `already_started`, `finished`; `submitted`, `not_submitted`, `unavailable`). The server maps them to the stored values above. In D4, `submission_status` comes from labelled sample data and is not edited by the Student (S-08, FR-10).
 
 ### `study_availability`
 | Column | Type | Rules |
@@ -105,38 +103,40 @@ Append-only history. The latest report is the current report. A report of 0 mean
 | `assignment_id` | uuid | FK → assignments |
 | `study_date` | date | Required |
 | `hours` | numeric(5,1) | Required; positive 0.5-hour increments |
+| `version` | integer | Required, default 1 (ADR-002 rule 8) |
 | `created_at`, `updated_at` | timestamptz | Required |
 
-Unique: `(assignment_id, study_date)`. Store Student-edited allocation separately from R1-B calculated suggestions. Recalculation must preserve overrides. If an override exceeds available hours, preserve it and show the over-allocation condition.
+Unique: `(assignment_id, study_date)`. Store Student-edited allocation separately from R1-B calculated suggestions. Recalculation must preserve overrides. An edit larger than that day's availability minus the other overrides on that day is rejected (DL-51). If availability later falls below existing overrides, they are preserved and the day shows the over-allocation condition (FR-06-E3).
 
 ### `subtasks`
 | Column | Type | Rules |
 |---|---|---|
 | `id` | uuid | Primary key |
 | `assignment_id` | uuid | FK → assignments |
-| `title` | varchar(200) | Required; 1–200 characters after trimming |
+| `title` | varchar(200) | Required; stored already trimmed, 1–200 characters. The API trims; the database rejects untrimmed text |
 | `is_completed` | boolean | Required, default false |
 | `position` | integer | Required; display order |
-| `version` | integer | Required, default 1; incremented on every change (ADR-002, rule 8) |
+| `version` | integer | Required, default 1 (ADR-002 rule 8) |
 | `created_at`, `updated_at` | timestamptz | Required |
 
-Subtask completion does not change assignment status. A write based on an out-of-date `version` fails with `409 VERSION_CONFLICT` and nothing is overwritten silently (FR-15-AC9).
+Subtask completion does not change assignment status.
 
 ### `study_timer_sessions`
 | Column | Type | Rules |
 |---|---|---|
 | `id` | uuid | Primary key |
+| `student_id` | uuid | FK → students. Repeated here so the database can enforce one running timer per Student |
 | `assignment_id` | uuid | FK → assignments |
-| `student_id` | uuid | FK → students; lets the database enforce one running timer per Student |
-| `started_at` | timestamptz | Required; server-recorded |
-| `ended_at` | timestamptz | Nullable until stopped |
-| `paused_seconds` | integer | Required, default 0; total of completed pauses |
-| `paused_at` | timestamptz | Nullable; set when the session is paused, cleared on resume. On resume, `paused_seconds` increases by `now() - paused_at` |
-| `duration_seconds` | integer | Nullable until stopped; may be 0 |
 | `state` | text | `running`, `paused`, `stopped` |
+| `started_at` | timestamptz | Required; server-recorded |
+| `paused_at` | timestamptz | Required while `paused`; when the current pause began |
+| `paused_seconds` | integer | Required, default 0; total of finished pauses |
+| `ended_at` | timestamptz | Required once `stopped` |
+| `duration_seconds` | integer | Required once `stopped`; may be 0 |
+| `version` | integer | Required, default 1 (ADR-002 rule 8; two devices may act on the same timer) |
 | `created_at`, `updated_at` | timestamptz | Required |
 
-Server is authoritative for timer state and elapsed time. Only one timer may be running at a time: a partial unique index on `(student_id) WHERE state = 'running'` enforces it (FR-16-AC8). Duration = `ended_at - started_at - paused_seconds`, computed from stored timestamps, never from a client timer. Every stopped session is saved, including a 0-second session. Timer sessions are not activity for S-09 and never change effort or remaining hours.
+Server is authoritative for timer state and elapsed time. **At most one `running` timer per Student**, enforced by a partial unique index; a `paused` timer does not block a new one (FR-16-AC8). Every stopped session is saved, including a 0-second session. Duration on stop = (`ended_at` − `started_at`) − `paused_seconds`, counting running time only (FR-16-AC5). While paused, the open pause is `now` − `paused_at`. Timer sessions are not activity for S-09 and never change effort or remaining hours.
 
 ### `weekly_availability_baselines` (S-19 reserve)
 | Column | Type | Rules |
@@ -158,7 +158,7 @@ Do not persist these as overrides:
 - Balance/possible-imbalance warning text and its supporting derived state.
 - Total recorded timer duration (sum of saved sessions).
 
-Planning Core recalculates from persisted inputs. Placeholder function name: **`recalculateStudentPlan(studentId)`**. S-07 and S-10 call it; S-03 replaces its placeholder implementation with the actual R1-B calculation.
+Planning Core recalculates from persisted inputs. Placeholder function name: **`recalculateStudentPlan(studentId)`**, exported from `server/src/planning-core/index.ts` and implemented (as a no-op) in `planning-core/recalculate.ts`. S-07 and S-10 call it; S-03 replaces the body of `recalculate.ts` with the actual R1-B calculation and keeps the name. Integration check I-1 confirms the placeholder is gone.
 
 ## 4. R1-B and supporting persistence semantics
 
@@ -178,7 +178,7 @@ Location: `server/src/data-access/migrations/` (DL-45).
 
 | Number | Reservation |
 |---|---|
-| `0001` | E-03 foundation migration: all tables and constraints in this document |
+| `0001` | E-03 foundation migration: all tables and constraints in this document, including `students` |
 | `0002` | S-01 availability |
 | `0003` | S-02 course ratings |
 | `0004` | S-03 start-by date |
@@ -191,6 +191,7 @@ Location: `server/src/data-access/migrations/` (DL-45).
 | `0011` | S-15 timer |
 | `0012` | S-16 search/filter |
 | `0013` | S-19 weekly baseline (reserve) |
+| `0014` | E-02 demo session: `app_sessions` only (it references `students` from `0001`). Not a slice reservation; it is the only table outside this document |
 
 The foundation migration creates all tables. A reserved slice migration is used only if the slice proves the foundation contract omitted a required schema change; do not create empty migrations.
 
@@ -210,3 +211,27 @@ The foundation migration creates all tables. A reserved slice migration is used 
 | S-15 | `study_timer_sessions` |
 | S-16 | `assignments` (title, course, deadlines, submission status) |
 | S-19 reserve | `weekly_availability_baselines`; `study_availability` individual-entry precedence |
+
+## 7. Acceptance check: can every committed slice be built without new columns?
+
+Checked against plan.md §7 on 27 November 2026. Result: **yes, after four additions** to Rehan's draft, all now in `0001`.
+
+| Gap found in the draft | Needed by | Fix |
+|---|---|---|
+| No `paused_at` | S-15, FR-16-AC5 (paused time excluded) | Added `paused_at` |
+| No `student_id` on timer sessions | S-15, FR-16-AC8 (one running timer) | Added `student_id` and a partial unique index |
+| No `version` columns | ADR-002 rule 8; two browsers and two devices (S-08, S-15) | Added `version` to assignments, allocation_overrides, subtasks, study_timer_sessions |
+| Status text differed from the API (`Not Started` vs `not_started`) | S-08, S-16 | Database values now equal API values; CHECK constraints added |
+
+Everything else maps without change (see §6). Derived values stay out of the database: start-by dates, shortage, warnings, allocation suggestions, the 3-day count (DL-52 uses the derived start-by date and `last_activity_at`).
+
+## 8. Assumptions for the reviewer to confirm
+
+1. **`version` is on four tables only.** Courses, ratings, availability and reports are single-writer in D4.
+2. **`study_availability.source`** keeps the draft's `individual` or `baseline`. D4 writes only `individual`; the S-19 baseline is derived from `weekly_availability_baselines`, so clearing it returns days to Unknown.
+3. **A new Student with no activity.** `last_activity_at` is null. DL-52 then counts from the start-by date, so no extra column is needed.
+4. **`updated_at` is set by the application**, not by a database trigger.
+5. **Half-hour steps.** The CHECK constraints are a backstop only. PostgreSQL rounds to `numeric(n,1)` before checking, so 1.25 (→ 1.3) is rejected but 0.96 (→ 1.0) is silently accepted. **The API must validate every hour value before writing** (DL-41, DL-49).
+6. **Deleting an assignment cascades** to its subtasks, overrides, reports and timer sessions (FR-13-AC3).
+7. **Session table.** `app_sessions` belongs to E-02, not to this document (migration 0014).
+

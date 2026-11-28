@@ -3,6 +3,23 @@
 **Status:** Design contract for D4 committed slices. Route names below are proposed resource-oriented routes; align the shared route registry with these names.  
 **Conventions:** JSON; dates `YYYY-MM-DD`; timestamps ISO 8601; hour values numeric; all academic-day interpretation uses `Asia/Karachi`. Authenticated application session is required. The API Layer may use Data Access Layer only for application-session operations; all feature data access goes through the owning module's public interface.
 
+## 0. Application session (E-02, DL-27, DL-44)
+
+There is no sign-in in D4. One seeded demo Student gets a real session cookie (`sid`, HttpOnly, SameSite=Lax, 7 days by default; `Secure` only when the server runs with `COOKIE_SECURE=true`). Every route needs a valid session except the two public ones below.
+
+| Route | Needs session | Purpose |
+|---|---|---|
+| `GET /api/health` | No | Liveness |
+| `POST /api/demo/session` | No | Issues the cookie for the demo Student. Returns `{ "student": { "studentId", "displayName", "timeZone" } }` |
+| `GET /api/me` | Yes | Returns the current `student` |
+| `POST /api/auth/logout` | Yes | Ends the session and clears the cookie. Returns `{ "ok": true }` |
+
+A missing, invalid or expired session returns `401`:
+```json
+{ "error": { "code": "UNAUTHENTICATED", "message": "A valid session is required." } }
+```
+The Student is always taken from the session, never from the request body or query.
+
 ## 1. Common response and validation rules
 
 Successful reads/writes return JSON with the resource or derived result. Validation failures return `400` with:
@@ -15,7 +32,30 @@ Successful reads/writes return JSON with the resource or derived result. Validat
   }
 }
 ```
-A rejected update is atomic: no field is changed and the previously saved value remains. This applies to invalid availability, ratings, effort, deadlines, date ranges and subtask titles. `404` means the requested resource does not exist; `409` means a state conflict: trying to start a second running timer (`TIMER_ALREADY_RUNNING`), or writing a subtask or assignment with an out-of-date `version` (`VERSION_CONFLICT`). A `VERSION_CONFLICT` response includes the current saved record, and nothing is overwritten.
+A rejected update is atomic: no field is changed and the previously saved value remains. This applies to invalid availability, ratings, effort, deadlines, date ranges and subtask titles. `404` means the requested resource does not exist; `409` means a state conflict: `VERSION_CONFLICT` (§1.1) or `TIMER_ALREADY_RUNNING` (§11).
+
+### 1.1 Version-checked writes (ADR-002 rule 8, FR-15-AC9)
+
+Four resources have a `version` column (`data-model.md` §2): **assignments, allocation overrides, subtasks and timer sessions**. They can be changed from two browsers or two devices, so a write must never silently overwrite a newer change.
+
+- Every read of one of these resources includes its current `"version": <integer>`.
+- Every write to one of them sends the `version` the client last read, in the JSON body. This applies to:
+  - assignment writes: `PUT …/effort`, `…/status`, `…/student-deadline`;
+  - `PUT /api/assignments/{id}/allocation/{date}` when an override already exists for that date (omit `version` to create a new one);
+  - `PATCH /api/subtasks/{id}` and `DELETE /api/subtasks/{id}`;
+  - `POST /api/timer/{sessionId}/pause | resume | stop`.
+- A missing or non-integer `version` returns `400 VALIDATION_ERROR`.
+- If the stored version differs, nothing is changed and the server returns `409`:
+  ```json
+  { "error": { "code": "VERSION_CONFLICT", "message": "This was changed somewhere else. The latest values are shown." }, "current": { "...": "the fresh representation, including its new version" } }
+  ```
+  The client shows `current` and lets the Student apply the edit again. That is how "no edit is discarded silently" (FR-15-AC9) is met.
+- On success the server increments `version` by 1 (one `UPDATE … WHERE id = $1 AND version = $2` in the Data Access Layer) and returns the new value.
+- Server-side bookkeeping does **not** take or bump a version: a remaining-hours report (§7) updating `last_activity_at` does not make the client's assignment version stale.
+
+*Added in the E-03 peer review (Subhan), 28 Nov 2026: the draft required version-checked writes in §10 but never said how the client sends the version. Record it as a decision-log entry when the team confirms.*
+
+### 1.2 Other rules
 
 All write operations return the saved representation. All timestamps are server-generated. Do not accept Student identity, sample marker, timer elapsed duration, or derived planning results from the client.
 
@@ -43,7 +83,7 @@ Request:
 ```json
 { "date": "2026-11-27", "hours": 0, "availability": "known", "source": "individual" }
 ```
-Invalid values are rejected with a message and preserve the old value.
+Invalid values are rejected with a message and preserve the old value. Sending `null` deletes that date's stored row, so the day returns to Unknown.
 
 ## 3. Course ratings — S-02
 
@@ -85,7 +125,7 @@ Response:
       "applicableDeadline": "2026-12-02", "status": "not_started",
       "submissionStatus": "not_submitted", "effortHours": 4,
       "effectiveEffortHours": 4, "startBy": "2026-11-30",
-      "planningState": "scheduled", "isSample": true,
+      "planningState": "scheduled", "isSample": true, "version": 1,
       "subtaskTotal": 5, "subtaskCompleted": 2
     }
   ],
@@ -115,7 +155,7 @@ Returns assignment fields plus course, start-by/shortage state, allocation, subt
 ## 5. Manual effort and start-by calculation — S-03
 
 ### `PUT /api/assignments/{assignmentId}/effort`
-Request: `{ "hours": 2.5 }`. Manual effort must be 0.5–200 in 0.5 steps. `0` is rejected; blank means no estimate (`null`). Response returns saved `effortHours`, timestamp and recalculated `planning` object.
+Request: `{ "hours": 2.5, "version": 3 }`. Manual effort must be 0.5–200 in 0.5 steps. `0` is rejected; blank means no estimate (`null`). Response returns saved `effortHours`, timestamp and recalculated `planning` object.
 No AI estimate, confidence-based estimation, unreliable-estimate flag or re-estimation is delivered in D4.
 
 ### `GET /api/planning`
@@ -149,7 +189,7 @@ Example planning result:
 Returns suggested R1-B daily split, saved overrides and over-allocation dates.
 
 ### `PUT /api/assignments/{assignmentId}/allocation/{date}`
-Request: `{ "hours": 2 }`. Positive half-hour increments only. Stores a Student override, never overwrites the calculated suggestion. Response returns saved override and refreshed allocation view. An edit larger than that day's availability minus the other overrides on that day is rejected with `400 VALIDATION_ERROR` and nothing changes (DL-51). If availability later falls below existing overrides, the overrides are kept and the day appears in `overAllocatedDates` (FR-06-E3). Suggestions and shortage explanations are neutral; they do not rank assignments.
+Request: `{ "hours": 2 }`, plus `"version"` when replacing an existing override (§1.1). Positive half-hour increments only. Stores a Student override, never overwrites the calculated suggestion. Response returns saved override and refreshed allocation view. An edit larger than that day's availability minus the other overrides on that day is rejected with `400 VALIDATION_ERROR` and nothing changes (DL-51). If availability later falls below existing overrides, the overrides are kept and the day appears in `overAllocatedDates` (FR-06-E3). Suggestions and shortage explanations are neutral; they do not rank assignments.
 
 ## 7. Remaining-hours reports — S-07
 
@@ -168,7 +208,7 @@ Latest report replaces older report as current. Zero does not change assignment 
 ## 8. Assignment status — S-08
 
 ### `PUT /api/assignments/{assignmentId}/status`
-Request: `{ "status": "already_started" }`. Allowed values: `not_started`, `already_started`, `finished`.
+Request: `{ "status": "already_started", "version": 3 }`. Allowed values: `not_started`, `already_started`, `finished`.
 Response returns saved status, timestamp/last-activity value and refreshed planning state. Status changes count as activity. Status and submission status are independent.
 
 ### Submission status (read-only in D4)
@@ -177,7 +217,7 @@ There is no write endpoint. In D4 submission status comes from labelled sample d
 ## 9. Student-entered deadline — S-10
 
 ### `PUT /api/assignments/{assignmentId}/student-deadline`
-Request: `{ "deadline": "2026-12-01" }` or `{ "deadline": null }` to clear.
+Request: `{ "deadline": "2026-12-01", "version": 2 }` or `{ "deadline": null, "version": 2 }` to clear.
 A date must be today or later. Yesterday or earlier is rejected and leaves the previous deadline unchanged. Planning uses official deadline whenever one exists; otherwise it uses the Student-entered deadline.
 Response returns `studentDeadline`, `applicableDeadline`, and refreshed planning result. This operation calls `recalculateStudentPlan(studentId)`.
 
@@ -191,11 +231,11 @@ Request: `{ "title": "Read the requirements" }`. Trim whitespace; resulting titl
 Response returns the created subtask, including `id`, `title`, `isCompleted`, `position` and `version`.
 
 ### `PATCH /api/subtasks/{subtaskId}`
-Request may update `{ "title": "..." }`, `{ "isCompleted": true }`, or both.
-Every request carries the `version` last read, for example `{ "version": 3, "isCompleted": true }`. Response returns the saved subtask with its new `version`. A stale `version` returns `409 VERSION_CONFLICT` with the current subtask and changes nothing (FR-15-AC9). Completion does not alter assignment status.
+Request may update `{ "title": "..." }`, `{ "isCompleted": true }`, or both, and always carries `"version"` (§1.1).
+Response returns saved subtask. Completion does not alter assignment status.
 
 ### `DELETE /api/subtasks/{subtaskId}`
-Send the last-read `version` as `?version=N`. Returns `{ "deleted": true }`. A stale `version` returns `409 VERSION_CONFLICT` and nothing is deleted (ADR-002, rule 8).
+Request: `{ "version": 2 }`. Returns `{ "deleted": true }`. A stale version returns `409 VERSION_CONFLICT` (§1.1), so a subtask edited on another device is never deleted unseen.
 
 ## 11. Study timer — S-15
 
@@ -203,7 +243,7 @@ Send the last-read `version` as `?version=N`. Returns `{ "deleted": true }`. A s
 Returns server-authoritative active timer state and total saved duration:
 ```json
 {
-  "activeSession": { "id": "uuid", "state": "running", "startedAt": "timestamp", "pausedSeconds": 0 },
+  "activeSession": { "id": "uuid", "state": "running", "startedAt": "timestamp", "pausedSeconds": 0, "version": 1 },
   "totalRecordedSeconds": 3600
 }
 ```
@@ -211,6 +251,8 @@ Returns server-authoritative active timer state and total saved duration:
 
 ### `POST /api/assignments/{assignmentId}/timer/start`
 Request: `{}`. Starts a session using server time. If another timer is already running, return `409 TIMER_ALREADY_RUNNING`.
+
+Pause, resume and stop each send `{ "version": n }` (§1.1).
 
 ### `POST /api/timer/{sessionId}/pause`
 Pauses the active session; response returns updated server state.
@@ -224,7 +266,7 @@ Stops and persists every session, including duration `0`. Response returns saved
 ## 12. Possible-imbalance warnings — S-09
 
 ### `GET /api/warnings`
-Returns possible-imbalance and 3-day advisory warnings derived from S-07/S-08 activity and S-03 start-by dates. Each item has a `type`, so the client can show the balance notice and the urgent start-by warning as two separate, labelled messages (FR-08-AC3):
+Returns possible-imbalance and 3-day advisory warnings derived from S-07/S-08 activity and S-03 start-by dates. Warning text must communicate that progress is unknown, not assert that a Student has neglected a course. Each item has a `type`, so the client shows the balance notice and the urgent start-by warning as two separate, labelled messages (FR-08-AC3):
 ```json
 {
   "warnings": [
@@ -237,7 +279,7 @@ Returns possible-imbalance and 3-day advisory warnings derived from S-07/S-08 ac
   ]
 }
 ```
-`confirmed_not_started` is for an assignment the Student marked Not Started whose start-by date has passed (FR-08-AC5). Warning text must communicate that progress is unknown, not assert that a Student has neglected a course.
+`confirmed_not_started` is for an assignment the Student marked Not Started whose start-by date has passed (FR-08-AC5).
 
 R3-A conditions:
 1. Course has unfinished, unsubmitted assignment with start-by within next 3 days or passed.

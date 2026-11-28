@@ -234,3 +234,9 @@ No pattern is persisted until explicit confirmation. A pattern only fills future
 ## 13. Team review record
 
 This is a review-ready initial proposal, not evidence that a team review has occurred. After review, record the actual changes in `evidence/Workflow-Evidence-Log.md`; do not claim review or acceptance before it happens.
+
+**Review status: PENDING.** Reviewer: Subhan (DL-56). Fill in one row per change after the team has actually reviewed the screens. An empty table means no review has been recorded.
+
+| Date | Reviewed by | Screen (section) | Change requested or made | Decision |
+|---|---|---|---|---|
+|  |  |  |  |  |

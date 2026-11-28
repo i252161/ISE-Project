@@ -1,0 +1,26 @@
+{
+  "name": "d4-planner-server",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsc && node dist/main.js",
+    "dev:db": "tsc && node dist/data-access/dev-database.js",
+    "test": "vitest run",
+    "check:boundaries": "depcruise src --config .dependency-cruiser.cjs"
+  },
+  "dependencies": {
+    "@fastify/cookie": "latest",
+    "fastify": "latest",
+    "pg": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/pg": "latest",
+    "dependency-cruiser": "latest",
+    "embedded-postgres": "latest",
+    "typescript": "^6.0.0",
+    "vitest": "latest"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "AI Academic Deadline Planner",
+  "short_name": "Deadline Planner",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e293b",
+  "icons": []
+}
