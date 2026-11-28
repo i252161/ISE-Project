@@ -93,3 +93,18 @@
 | 4 | Previously accepted slices re-checked | ☐ | | No slice accepted yet; whole suite passes (31 of 31, 5 of 5 runs, in review) |
 | 4 | Merged and runs from a clean start (migrations apply) | ☐ | | Migrations apply from empty in the tests; tick after merge |
 
+## Record: E-04 Sample data
+
+**Slice:** E-04 **plan.md version:** v03
+
+| Gate | Check | Done? | Evidence link | Notes |
+|---|---|---|---|---|
+| 3 | Boundary check (dependency-cruiser) passes | ☑ | `Test-Evidence.md`, row "E-04 / Gate 3" | 36 modules, 50 dependencies, no violations |
+| 3 | Only the 11 agreed backend modules/interfaces used | ☑ | `ls server/src` | All new code is inside `data-access/seed/` |
+| 3 | No prohibited technology (agent.md §7.1) | ☑ | `git diff` | Only `package.json` change is the `seed:sample` script the slice card requires; no new package |
+| 3 | Only the Data Access Layer touches PostgreSQL | ☑ | search for `from 'pg'` outside `data-access` | No matches |
+| 3 | Seeding is code, not a migration (agent.md §8.2, DL-47) | ☑ | `server/src/data-access/migrations/` | No migration added |
+| 3 | Any design change recorded in the ADR or decision log | ☑ | `decision-log.md` DL-58 | |
+| 4 | Previously accepted slices re-checked | ☐ | | Whole suite passes (48 of 48, 5 of 5 runs); tick after review |
+| 4 | Merged and runs from a clean start (migrations apply) | ☐ | | Tick after merge |
+

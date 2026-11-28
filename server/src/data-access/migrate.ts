@@ -1,3 +1,4 @@
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Pool } from 'pg';
@@ -9,6 +10,27 @@ const MIGRATION_PATTERN = /^\d{4}_[a-z0-9_]+\.sql$/i;
 // second process) never apply the same migration at once. Without it, parallel
 // `CREATE TABLE IF NOT EXISTS` fails with a duplicate pg_type key.
 const MIGRATION_LOCK_KEY = 2026112801;
+
+/**
+ * Folder holding the .sql files. tsc does not copy .sql files into dist/, so when running
+ * compiled code fall back to the source folder.
+ */
+export function findMigrationsDir(): string {
+  const candidates = [
+    path.join(__dirname, 'migrations'),
+    path.resolve(__dirname, '../../src/data-access/migrations')
+  ];
+  for (const dir of candidates) {
+    try {
+      if (fsSync.readdirSync(dir).some((name) => name.endsWith('.sql'))) {
+        return dir;
+      }
+    } catch {
+      // try the next candidate
+    }
+  }
+  return candidates[0] as string;
+}
 
 /**
  * Runs unapplied versioned SQL migrations from data-access/migrations/ in order.

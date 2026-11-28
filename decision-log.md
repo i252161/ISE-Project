@@ -578,6 +578,23 @@ Rule from the ASR file: an unresolved Open Question is not approved behaviour. E
 - **Alternatives considered:** the plan.md v02 tracks A to D, which had more waiting between people.
 - **Used by:** plan.md v03 §9, slices/README.md, each person's MY-TASKS.md.
 
+### DL-57: Version-checked writes (api-contract.md §1.1)
+
+- **Status:** Approved by the group lead on 28 November 2026, closing the item raised in the E-03 peer review (Workflow Evidence Log row 3). Wording drafted by the AI assistant.
+- **Decision:** assignments, allocation overrides, subtasks and timer sessions carry a `version`. Every read returns it; every write sends the version the client last read; a stale version changes nothing and returns `409 VERSION_CONFLICT` with the current representation. Server bookkeeping (a remaining-hours report touching `last_activity_at`) does not bump it.
+- **Used by:** S-04, S-08, S-10, S-14, S-15.
+
+### DL-58: How sample data is loaded (E-04)
+
+- **Status:** Approved by the group lead on 28 November 2026. Extends DL-28 and DL-47. Wording drafted by the AI assistant.
+- **Decision:**
+  - `npm run seed:sample` reloads one Student's sample rows in a single transaction. It never deletes the Student row. It deletes only that Student's `is_sample` courses (the foreign keys remove their assignments, ratings, reports, overrides, subtasks and timer sessions) and the availability rows for the 14 days it fills (today to today + 13).
+  - Dates are relative to the day it runs, in Asia/Karachi. Ids are derived from the Student and the row's name, so a re-run on the same day gives identical rows.
+  - Only stopped timer sessions are seeded.
+  - **Tests:** the Vitest global setup loads the demo Student's sample data once, as of `2027-01-11` (exposed as `SAMPLE_DATA_TODAY`). Test files must not reload the demo Student's sample data, because test files run in parallel on one database; tests that need to reload use a fresh Student.
+- **Alternatives considered:** deleting all of the Student's rows (would wipe non-sample data); re-creating the Student (logs everyone out); seeding the demo Student inside each test file (races between parallel test files).
+- **Used by:** E-04, E-05 and every slice test that reads sample data.
+
 ## Gates
 
 | Gate | What it proves | Owner ADR | If it fails | Status |
