@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import EmbeddedPostgres from 'embedded-postgres';
 
@@ -13,7 +14,10 @@ export async function startDevDatabase(): Promise<EmbeddedPostgres> {
     persistent: true
   });
 
-  await pg.initialise();
+  // Initialise only on the first run: the data folder is persistent, and initdb refuses a non-empty folder.
+  if (!fs.existsSync(path.join(databaseDir, 'PG_VERSION'))) {
+    await pg.initialise();
+  }
   await pg.start();
   console.log(`Embedded PostgreSQL running on 127.0.0.1:${port} (data: ${databaseDir})`);
   return pg;
