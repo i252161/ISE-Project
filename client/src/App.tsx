@@ -1,8 +1,10 @@
-import { AvailabilityPage } from './features/availability/AvailabilityPage';
 import { useState } from 'react';
+import { AvailabilityPage } from './features/availability/AvailabilityPage';
+import { StartByPage } from './features/start-by/StartByPage';
 
 export function App() {
-  const [page, setPage] = useState<'home' | 'availability'>('home');
+  const [page, setPage] = useState<'home' | 'availability' | 'start-by'>('home');
+
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 800, margin: '2rem auto', padding: '0 1rem' }}>
       <h1>AI Academic Deadline Planner</h1>
@@ -12,7 +14,7 @@ export function App() {
           {/* --- Slice navigation links (one line per slice, DL-55) --- */}
           <li><button type="button" onClick={() => setPage('availability')}>Availability</button></li>
           {/* [S-02] Course confidence ratings */}
-          {/* [S-03] Start-by dates & effort */}
+          <li><button type="button" onClick={() => setPage('start-by')}>Start-by dates</button></li>
           {/* [S-04] Allocation & shortage suggestions */}
           {/* [S-07] Remaining hours report */}
           {/* [S-08] Assignment status */}
@@ -24,7 +26,8 @@ export function App() {
           {/* [S-19] Recurring weekly availability baseline */}
         </ul>
       </nav>
-      {page === 'availability' ? <AvailabilityPage /> : null}
+      {page === 'availability' && <AvailabilityPage />}
+      {page === 'start-by' && <StartByPage />}
     </main>
   );
 }

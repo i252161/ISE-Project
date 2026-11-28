@@ -33,4 +33,14 @@ export const sessions = createSessions(() => getPool());
 // --- S-01 availability data access (DL-55 marked line) ---
 export const availability = createAvailability(() => getPool());
 
+// [S-03] Start-by date & manual effort queries
+export { startByQueries } from './start-by/queries';
+export type {
+  AssignmentEffortSnapshot,
+  AssignmentInputRow,
+  AvailabilityInputRow,
+  PlanningTx,
+  StudentPlanningInputs
+} from './start-by/queries';
+
 export { runMigrations };

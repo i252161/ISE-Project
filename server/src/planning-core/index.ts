@@ -14,6 +14,8 @@ export { recalculateStudentPlan } from './recalculate';
 export * as availability from './availability/index';
 // [S-02] Course rating exports
 // [S-03] Start-by date calculation exports
+export { computeStudentPlan, updateAssignmentEffort } from './start-by/service';
+export type { AssignmentPlanningResult, PlanningState, StudentPlanResult } from './start-by/r1b';
 // [S-04] Allocation & shortage exports
 // [S-07] Remaining hours exports
 // [S-08] Assignment status exports
