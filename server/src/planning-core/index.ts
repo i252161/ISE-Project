@@ -11,7 +11,7 @@ export const readOnly = {} as const;
 export { recalculateStudentPlan } from './recalculate';
 
 // --- Slice exports (one line per slice, DL-55) ---
-// [S-01] Availability planning exports
+export * as availability from './availability/index';
 // [S-02] Course rating exports
 // [S-03] Start-by date calculation exports
 // [S-04] Allocation & shortage exports

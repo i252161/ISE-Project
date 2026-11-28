@@ -51,6 +51,33 @@
 | Selected NFRs measured (for example NFR-01 timing, NFR-04 onboarding), with actual values recorded | ☐ | | |
 | Critical failures resolved, or listed as known issues | ☐ | | |
 
+## Record: S-01 Enter daily study availability
+
+**Slice:** S-01 Enter daily study availability **plan.md version:** v03
+
+| Gate | Check | Done? | Evidence link | Notes |
+|---|---|---|---|---|
+| 1 | Scope written | ☑ | `slices/S-01-availability.md` | In/out of scope stated |
+| 1 | Requirement IDs linked | ☑ | `slices/S-01-availability.md` | FR-03 (AC1, AC3), BR-17, RG-42, DL-36, DL-41 |
+| 1 | Acceptance criteria clear | ☑ | `slices/S-01-availability.md` | One criterion (invalid entry rejected, previous value kept) is marked "proposed" in the slice card; the API contract records it as approved E-03 behaviour |
+| 1 | Blocking open decisions (`plan.md` §4) resolved | ☑ | `decision-log.md` DL-36, DL-41 | |
+| 2 | Core behaviour checked by a team member | ☑ | `Test-Evidence.md` S-01 rows; Workflow log row 6 | Rehan ran the app in two browsers on 2026-11-28 |
+| 2 | Important negative cases checked | ☑ | `Test-Evidence.md` S-01 rows | 24.5, 1.25, text rejected; previous value kept; no session gives 401 |
+| 2 | Relevant EP/BVA cases checked (or "not applicable" with reason) | ☑ | `Test-Evidence.md` S-01 rows | BVA -0.5, 0, 0.5, 23.5, 24, 24.5; EP 1.25, text, blank |
+| 3 | Boundary check (dependency-cruiser) passes | ☑ | Output below | |
+| 3 | Only the 11 agreed backend modules/interfaces used | ☑ | `git status` / diff | New code only in `planning-core/availability/`, `api-layer/availability/`, `data-access/availability.ts`; no new module |
+| 3 | No prohibited technology (agent.md §7.1) | ☑ | `git status` | No `package.json` or lock file change; Vitest only |
+| 3 | Only the Data Access Layer touches PostgreSQL | ☑ | Code read by Rehan | SQL only in `data-access/availability.ts`; API Layer imports only `sessions` from data-access |
+| 3 | Any design change recorded in the ADR or decision log | ☑ | Workflow log row 6 | No design change. Note: `App.tsx` and `buildApp` (clock option) were edited beyond the marked line; recorded in the log |
+| 4 | Previously accepted slices re-checked | ☑ | Output below | Full server suite after S-01: 5 files, 41 tests passed (31 earlier tests included) |
+| 4 | Merged and runs from a clean start (migrations apply) | ☐ | | Not merged yet. No new migration was needed |
+
+Gate 3 command output (run by Rehan, 2026-11-28, Windows):
+
+    > npm --prefix server run check:boundaries
+    > depcruise src --config .dependency-cruiser.cjs
+    ✔ no dependency violations found (36 modules, 47 dependencies cruised)
+
 ## Record: E-03 Stage 3 design artefacts
 
 **Slice:** E-03 **plan.md version:** v03
