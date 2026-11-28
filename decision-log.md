@@ -595,6 +595,17 @@ Rule from the ASR file: an unresolved Open Question is not approved behaviour. E
 - **Alternatives considered:** deleting all of the Student's rows (would wipe non-sample data); re-creating the Student (logs everyone out); seeding the demo Student inside each test file (races between parallel test files).
 - **Used by:** E-04, E-05 and every slice test that reads sample data.
 
+### DL-59: E-05 shared screens and placeholder values
+
+- **Status:** Approved by the group lead on 28 November 2026. Extends DL-55. Wording drafted by the AI assistant.
+- **Decision:**
+  - The assignment list and detail read through Planning Core (`planning-core/assignments/`), which reads through the Data Access Layer's `assignmentReads` group. The API Layer still imports only `sessions` from the Data Access Layer (DL-44).
+  - Derived or slice-owned values are `null` until their slice merges (api-contract.md §4, E-05 notes). Each slice replaces only its own marked line on the server and its own `data-slice-slot` line on the detail page.
+  - Effective effort (DL-50) is computed once, in `planning-core/assignments/index.ts` (`effectiveEffortHours`); S-03 and S-07 reuse it.
+  - The client uses hash routes (`#/assignments`, `#/assignments/<id>`; no router package). Other pages use their own hash (for example `#/availability`, `#/courses`) and a marked line in `App.tsx`.
+- **Alternatives considered:** empty arrays for unbuilt parts (indistinguishable from "none"); each slot fetching only its own route (the contract already puts these parts in the detail response); a router package (a new package needs a team decision).
+- **Used by:** E-05, S-01, S-02, S-03, S-04, S-07 to S-10, S-14 to S-16.
+
 ## Gates
 
 | Gate | What it proves | Owner ADR | If it fails | Status |

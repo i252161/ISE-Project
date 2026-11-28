@@ -1,6 +1,7 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import { sessions } from '../data-access/index';
+import { registerAssignmentRoutes } from './assignments/routes';
 
 // The API Layer reaches the Data Access Layer only through `sessions` (agent.md §4.3, DL-44).
 type SessionPrincipal = NonNullable<Awaited<ReturnType<typeof sessions.validate>>>;
@@ -68,6 +69,9 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
     reply.clearCookie(SESSION_COOKIE, { path: '/' });
     return { ok: true };
   });
+
+  // [E-05] Assignment list and detail (read-only)
+  registerAssignmentRoutes(app);
 
   // --- Slice route registration (one line per slice, DL-55) ---
   // [S-01] Availability routes
