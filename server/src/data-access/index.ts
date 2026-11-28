@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { createAssignmentReads } from './assignments';
 import { runMigrations } from './migrate';
 import { createSessions } from './sessions';
 
@@ -29,4 +30,10 @@ export async function closePool(): Promise<void> {
  */
 export const sessions = createSessions(() => getPool());
 
+/**
+ * Read-only assignment queries for Planning Core (E-05). Not for the API Layer (agent.md §4.3).
+ */
+export const assignmentReads = createAssignmentReads(() => getPool());
+
+export type { AssignmentRecord } from './assignments';
 export { runMigrations };
