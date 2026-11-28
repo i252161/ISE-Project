@@ -1,6 +1,6 @@
 # E-04 — Sample data
 
-**Type:** setup task (not a slice) · **Status:** blocked: E-01 and E-03 not built · **Plan:** plan.md v03 §8 · **Decisions:** DL-28, DL-41, DL-47, DL-55
+**Type:** setup task (not a slice) · **Status:** built on `setup/E-04-sample-data-v2`, review pending · **Plan:** plan.md v03 §8 · **Decisions:** DL-28, DL-41, DL-47, DL-55
 **Owner:** Subhan · **Reviewer:** Ahmad (DL-56)
 
 ## What this is

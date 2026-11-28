@@ -120,3 +120,39 @@ Gate 3 command output (run by Rehan, 2026-11-28, Windows):
 | 4 | Previously accepted slices re-checked | ☐ | | No slice accepted yet; whole suite passes (31 of 31, 5 of 5 runs, in review) |
 | 4 | Merged and runs from a clean start (migrations apply) | ☐ | | Migrations apply from empty in the tests; tick after merge |
 
+## Record: E-01 Walking skeleton (setup task)
+
+**Slice:** E-01 **plan.md version:** v03
+
+| Gate | Check | Done? | Evidence link | Notes |
+|---|---|---|---|---|
+| 1 | Scope written | ☑ | `slices/E-01-walking-skeleton.md` | |
+| 1 | Requirement IDs linked | ☑ | `slices/E-01-walking-skeleton.md` | DL-29, DL-30, DL-44, DL-45, DL-46, DL-55 |
+| 1 | Acceptance criteria clear | ☑ | `slices/E-01-walking-skeleton.md` | |
+| 1 | Blocking open decisions (`plan.md` §4) resolved | ☐ | | No record that the TypeScript skill check (DL-42), required before E-01, was done |
+| 2 | Core behaviour checked by a team member | ☐ | `Test-Evidence.md`, rows "E-01" | Database test, boundary check and build re-run by Claude for Ali on Ali's machine; server/client start reported by Antigravity only. Tick after Rehan's review |
+| 2 | Important negative cases checked | ☐ | `Test-Evidence.md`, row "E-01 / Gate 3 forbidden import" | Agent-reported only; re-run needed |
+| 2 | Relevant EP/BVA cases checked (or "not applicable" with reason) | ☑ | | Not applicable: E-01 has no user input |
+| 3 | Boundary check (dependency-cruiser) passes | ☑ | `Test-Evidence.md`, row "E-01 / Gate 3 boundaries" | No dependency violations (24 modules, 17 dependencies), local repository and fresh clone |
+| 3 | Only the 11 agreed backend modules/interfaces used | ☑ | `ls server/src` | Exactly 11 module folders, each with one `index.ts`; `main.ts` imports only `api-layer`; the API Layer imports only `sessions` from `data-access` |
+| 3 | No prohibited technology (agent.md §7.1) | ☑ | `server/package.json`, `client/package.json` | fastify, @fastify/cookie, pg, react, react-dom; dev: typescript, vite, vitest, dependency-cruiser, embedded-postgres, type packages |
+| 3 | Only the Data Access Layer touches PostgreSQL | ☑ | `server/.dependency-cruiser.cjs` | `pg` and `embedded-postgres` are used only inside `data-access` |
+| 3 | Any design change recorded in the ADR or decision log | ☐ | | Docker (DL-23) replaced by `embedded-postgres`: not yet recorded in `decision-log.md` |
+| 4 | Previously accepted slices re-checked | ☑ | | Not applicable: E-01 is the first code merged |
+| 4 | Merged and runs from a clean start (migrations apply) | ☑ | PR #4, `22082bd` | Fresh clone: `npm ci`, tests 2 of 2 and the boundary check passed before the push. Merged without a peer review |
+
+## Record: E-04 Sample data
+
+**Slice:** E-04 **plan.md version:** v03
+
+| Gate | Check | Done? | Evidence link | Notes |
+|---|---|---|---|---|
+| 3 | Boundary check (dependency-cruiser) passes | ☑ | `Test-Evidence.md`, row "E-04 / Gate 3" | 36 modules, 50 dependencies, no violations |
+| 3 | Only the 11 agreed backend modules/interfaces used | ☑ | `ls server/src` | All new code is inside `data-access/seed/` |
+| 3 | No prohibited technology (agent.md §7.1) | ☑ | `git diff` | Only `package.json` change is the `seed:sample` script the slice card requires; no new package |
+| 3 | Only the Data Access Layer touches PostgreSQL | ☑ | search for `from 'pg'` outside `data-access` | No matches |
+| 3 | Seeding is code, not a migration (agent.md §8.2, DL-47) | ☑ | `server/src/data-access/migrations/` | No migration added |
+| 3 | Any design change recorded in the ADR or decision log | ☑ | `decision-log.md` DL-58 | |
+| 4 | Previously accepted slices re-checked | ☐ | | Whole suite passes (48 of 48, 5 of 5 runs); tick after review |
+| 4 | Merged and runs from a clean start (migrations apply) | ☐ | | Tick after merge |
+
