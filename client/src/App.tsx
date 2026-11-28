@@ -1,4 +1,9 @@
+import { useState } from 'react';
+import { StartByPage } from './features/start-by/StartByPage';
+
 export function App() {
+  const [activeView, setActiveView] = useState<'home' | 'start-by'>('home');
+
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 800, margin: '2rem auto', padding: '0 1rem' }}>
       <h1>AI Academic Deadline Planner</h1>
@@ -8,7 +13,7 @@ export function App() {
           {/* --- Slice navigation links (one line per slice, DL-55) --- */}
           {/* [S-01] Daily availability */}
           {/* [S-02] Course confidence ratings */}
-          {/* [S-03] Start-by dates & effort */}
+          <li><button type="button" onClick={() => setActiveView('start-by')}>Start-by dates</button></li>
           {/* [S-04] Allocation & shortage suggestions */}
           {/* [S-07] Remaining hours report */}
           {/* [S-08] Assignment status */}
@@ -20,6 +25,7 @@ export function App() {
           {/* [S-19] Recurring weekly availability baseline */}
         </ul>
       </nav>
+      {activeView === 'start-by' && <StartByPage />}
     </main>
   );
 }
