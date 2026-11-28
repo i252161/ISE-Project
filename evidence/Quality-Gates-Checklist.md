@@ -51,6 +51,33 @@
 | Selected NFRs measured (for example NFR-01 timing, NFR-04 onboarding), with actual values recorded | ☐ | | |
 | Critical failures resolved, or listed as known issues | ☐ | | |
 
+## Record: S-01 Enter daily study availability
+
+**Slice:** S-01 Enter daily study availability **plan.md version:** v03
+
+| Gate | Check | Done? | Evidence link | Notes |
+|---|---|---|---|---|
+| 1 | Scope written | ☑ | `slices/S-01-availability.md` | In/out of scope stated |
+| 1 | Requirement IDs linked | ☑ | `slices/S-01-availability.md` | FR-03 (AC1, AC3), BR-17, RG-42, DL-36, DL-41 |
+| 1 | Acceptance criteria clear | ☑ | `slices/S-01-availability.md` | One criterion (invalid entry rejected, previous value kept) is marked "proposed" in the slice card; the API contract records it as approved E-03 behaviour |
+| 1 | Blocking open decisions (`plan.md` §4) resolved | ☑ | `decision-log.md` DL-36, DL-41 | |
+| 2 | Core behaviour checked by a team member | ☑ | `Test-Evidence.md` S-01 rows; Workflow log row 6 | Rehan ran the app in two browsers on 2026-11-28 |
+| 2 | Important negative cases checked | ☑ | `Test-Evidence.md` S-01 rows | 24.5, 1.25, text rejected; previous value kept; no session gives 401 |
+| 2 | Relevant EP/BVA cases checked (or "not applicable" with reason) | ☑ | `Test-Evidence.md` S-01 rows | BVA -0.5, 0, 0.5, 23.5, 24, 24.5; EP 1.25, text, blank |
+| 3 | Boundary check (dependency-cruiser) passes | ☑ | Output below | |
+| 3 | Only the 11 agreed backend modules/interfaces used | ☑ | `git status` / diff | New code only in `planning-core/availability/`, `api-layer/availability/`, `data-access/availability.ts`; no new module |
+| 3 | No prohibited technology (agent.md §7.1) | ☑ | `git status` | No `package.json` or lock file change; Vitest only |
+| 3 | Only the Data Access Layer touches PostgreSQL | ☑ | Code read by Rehan | SQL only in `data-access/availability.ts`; API Layer imports only `sessions` from data-access |
+| 3 | Any design change recorded in the ADR or decision log | ☑ | Workflow log row 6 | No design change. Note: `App.tsx` and `buildApp` (clock option) were edited beyond the marked line; recorded in the log |
+| 4 | Previously accepted slices re-checked | ☑ | Output below | Full server suite after S-01: 5 files, 41 tests passed (31 earlier tests included) |
+| 4 | Merged and runs from a clean start (migrations apply) | ☐ | | Not merged yet. No new migration was needed |
+
+Gate 3 command output (run by Rehan, 2026-11-28, Windows):
+
+    > npm --prefix server run check:boundaries
+    > depcruise src --config .dependency-cruiser.cjs
+    ✔ no dependency violations found (36 modules, 47 dependencies cruised)
+
 ## Record: E-03 Stage 3 design artefacts
 
 **Slice:** E-03 **plan.md version:** v03
@@ -92,4 +119,40 @@
 | 3 | Any design change recorded in the ADR or decision log | ☑ | `docs/design/api-contract.md` §0 | The only addition, the opt-in `Secure` cookie flag, is recorded in the contract. DL-27 and DL-44 unchanged |
 | 4 | Previously accepted slices re-checked | ☐ | | No slice accepted yet; whole suite passes (31 of 31, 5 of 5 runs, in review) |
 | 4 | Merged and runs from a clean start (migrations apply) | ☐ | | Migrations apply from empty in the tests; tick after merge |
+
+## Record: E-01 Walking skeleton (setup task)
+
+**Slice:** E-01 **plan.md version:** v03
+
+| Gate | Check | Done? | Evidence link | Notes |
+|---|---|---|---|---|
+| 1 | Scope written | ☑ | `slices/E-01-walking-skeleton.md` | |
+| 1 | Requirement IDs linked | ☑ | `slices/E-01-walking-skeleton.md` | DL-29, DL-30, DL-44, DL-45, DL-46, DL-55 |
+| 1 | Acceptance criteria clear | ☑ | `slices/E-01-walking-skeleton.md` | |
+| 1 | Blocking open decisions (`plan.md` §4) resolved | ☐ | | No record that the TypeScript skill check (DL-42), required before E-01, was done |
+| 2 | Core behaviour checked by a team member | ☐ | `Test-Evidence.md`, rows "E-01" | Database test, boundary check and build re-run by Claude for Ali on Ali's machine; server/client start reported by Antigravity only. Tick after Rehan's review |
+| 2 | Important negative cases checked | ☐ | `Test-Evidence.md`, row "E-01 / Gate 3 forbidden import" | Agent-reported only; re-run needed |
+| 2 | Relevant EP/BVA cases checked (or "not applicable" with reason) | ☑ | | Not applicable: E-01 has no user input |
+| 3 | Boundary check (dependency-cruiser) passes | ☑ | `Test-Evidence.md`, row "E-01 / Gate 3 boundaries" | No dependency violations (24 modules, 17 dependencies), local repository and fresh clone |
+| 3 | Only the 11 agreed backend modules/interfaces used | ☑ | `ls server/src` | Exactly 11 module folders, each with one `index.ts`; `main.ts` imports only `api-layer`; the API Layer imports only `sessions` from `data-access` |
+| 3 | No prohibited technology (agent.md §7.1) | ☑ | `server/package.json`, `client/package.json` | fastify, @fastify/cookie, pg, react, react-dom; dev: typescript, vite, vitest, dependency-cruiser, embedded-postgres, type packages |
+| 3 | Only the Data Access Layer touches PostgreSQL | ☑ | `server/.dependency-cruiser.cjs` | `pg` and `embedded-postgres` are used only inside `data-access` |
+| 3 | Any design change recorded in the ADR or decision log | ☐ | | Docker (DL-23) replaced by `embedded-postgres`: not yet recorded in `decision-log.md` |
+| 4 | Previously accepted slices re-checked | ☑ | | Not applicable: E-01 is the first code merged |
+| 4 | Merged and runs from a clean start (migrations apply) | ☑ | PR #4, `22082bd` | Fresh clone: `npm ci`, tests 2 of 2 and the boundary check passed before the push. Merged without a peer review |
+
+## Record: E-04 Sample data
+
+**Slice:** E-04 **plan.md version:** v03
+
+| Gate | Check | Done? | Evidence link | Notes |
+|---|---|---|---|---|
+| 3 | Boundary check (dependency-cruiser) passes | ☑ | `Test-Evidence.md`, row "E-04 / Gate 3" | 36 modules, 50 dependencies, no violations |
+| 3 | Only the 11 agreed backend modules/interfaces used | ☑ | `ls server/src` | All new code is inside `data-access/seed/` |
+| 3 | No prohibited technology (agent.md §7.1) | ☑ | `git diff` | Only `package.json` change is the `seed:sample` script the slice card requires; no new package |
+| 3 | Only the Data Access Layer touches PostgreSQL | ☑ | search for `from 'pg'` outside `data-access` | No matches |
+| 3 | Seeding is code, not a migration (agent.md §8.2, DL-47) | ☑ | `server/src/data-access/migrations/` | No migration added |
+| 3 | Any design change recorded in the ADR or decision log | ☑ | `decision-log.md` DL-58 | |
+| 4 | Previously accepted slices re-checked | ☐ | | Whole suite passes (48 of 48, 5 of 5 runs); tick after review |
+| 4 | Merged and runs from a clean start (migrations apply) | ☐ | | Tick after merge |
 

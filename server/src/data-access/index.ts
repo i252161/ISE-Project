@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { runMigrations } from './migrate';
 import { createSessions } from './sessions';
+import { createAvailability } from './availability';
 
 let pool: Pool | null = null;
 
@@ -28,6 +29,9 @@ export async function closePool(): Promise<void> {
  * Implemented in sessions.ts (E-02).
  */
 export const sessions = createSessions(() => getPool());
+
+// --- S-01 availability data access (DL-55 marked line) ---
+export const availability = createAvailability(() => getPool());
 
 // [S-03] Start-by date & manual effort queries
 export { startByQueries } from './start-by/queries';

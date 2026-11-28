@@ -8,6 +8,7 @@
     "dev": "tsc && node dist/main.js",
     "dev:db": "tsc && node dist/data-access/dev-database.js",
     "test": "vitest run",
+    "seed:sample": "tsc && node dist/data-access/seed/seed-sample.js",
     "check:boundaries": "depcruise src --config .dependency-cruiser.cjs"
   },
   "dependencies": {
