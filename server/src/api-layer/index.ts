@@ -1,6 +1,7 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import { sessions } from '../data-access/index';
+import { registerAvailabilityRoutes } from './availability/routes';
 
 // The API Layer reaches the Data Access Layer only through `sessions` (agent.md §4.3, DL-44).
 type SessionPrincipal = NonNullable<Awaited<ReturnType<typeof sessions.validate>>>;
@@ -16,7 +17,7 @@ const SESSION_COOKIE = 'sid';
 // Everything else requires a valid session (E-02).
 const PUBLIC_ROUTES = new Set(['GET /api/health', 'POST /api/demo/session']);
 
-export async function buildApp(options: { logger?: boolean } = {}): Promise<FastifyInstance> {
+export async function buildApp(options: { logger?: boolean; clock?: () => Date } = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: options.logger ?? true });
 
   await app.register(cookie);
@@ -71,6 +72,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
 
   // --- Slice route registration (one line per slice, DL-55) ---
   // [S-01] Availability routes
+  registerAvailabilityRoutes(app, { clock: options.clock });
   // [S-02] Course rating routes
   // [S-03] Start-by date & manual effort routes
   // [S-04] Allocation & shortage suggestion routes

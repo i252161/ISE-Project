@@ -1,12 +1,16 @@
+import { AvailabilityPage } from './features/availability/AvailabilityPage';
+import { useState } from 'react';
+
 export function App() {
+  const [page, setPage] = useState<'home' | 'availability'>('home');
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 800, margin: '2rem auto', padding: '0 1rem' }}>
       <h1>AI Academic Deadline Planner</h1>
-      <p>Walking skeleton (E-01) — static PWA shell ready.</p>
+      <p><strong>Sample data</strong></p>
       <nav aria-label="Primary navigation">
         <ul>
           {/* --- Slice navigation links (one line per slice, DL-55) --- */}
-          {/* [S-01] Daily availability */}
+          <li><button type="button" onClick={() => setPage('availability')}>Availability</button></li>
           {/* [S-02] Course confidence ratings */}
           {/* [S-03] Start-by dates & effort */}
           {/* [S-04] Allocation & shortage suggestions */}
@@ -20,6 +24,7 @@ export function App() {
           {/* [S-19] Recurring weekly availability baseline */}
         </ul>
       </nav>
+      {page === 'availability' ? <AvailabilityPage /> : null}
     </main>
   );
 }
