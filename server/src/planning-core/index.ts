@@ -18,6 +18,8 @@ export { computeStudentPlan, updateAssignmentEffort } from './start-by/service';
 export type { AssignmentPlanningResult, PlanningState, StudentPlanResult } from './start-by/r1b';
 // [S-04] Allocation & shortage exports
 // [S-07] Remaining hours exports
+export { submitRemainingHours, validateRemainingHoursBody } from './remaining-hours/service';
+export type { RemainingHoursReport, SubmitRemainingHoursResult } from './remaining-hours/service';
 // [S-08] Assignment status exports
 // [S-09] Course-balance & start-by warning exports
 // [S-10] Manual deadline exports

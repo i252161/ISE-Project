@@ -39,4 +39,8 @@ export type {
   StudentPlanningInputs
 } from './start-by/queries';
 
+// [S-07] Remaining hours report queries
+export { remainingHoursQueries } from './remaining-hours/queries';
+export type { RemainingHoursReportRow, InsertRemainingHoursTxResult } from './remaining-hours/queries';
+
 export { runMigrations };

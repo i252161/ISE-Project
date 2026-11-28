@@ -2,6 +2,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import { sessions } from '../data-access/index';
 import { registerStartByRoutes } from './start-by/routes';
+import { registerRemainingHoursRoutes } from './remaining-hours/routes';
 
 // The API Layer reaches the Data Access Layer only through `sessions` (agent.md §4.3, DL-44).
 type SessionPrincipal = NonNullable<Awaited<ReturnType<typeof sessions.validate>>>;
@@ -77,6 +78,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
   registerStartByRoutes(app);
   // [S-04] Allocation & shortage suggestion routes
   // [S-07] Remaining hours progress report routes
+  registerRemainingHoursRoutes(app);
   // [S-08] Assignment status routes
   // [S-09] Course-balance & start-by warning routes
   // [S-10] Manual deadline routes

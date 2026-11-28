@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { StartByPage } from './features/start-by/StartByPage';
+import { RemainingHoursPage } from './features/remaining-hours/RemainingHoursPage';
 
 export function App() {
-  const [activeView, setActiveView] = useState<'home' | 'start-by'>('home');
+  const [activeView, setActiveView] = useState<'home' | 'start-by' | 'remaining-hours'>('home');
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 800, margin: '2rem auto', padding: '0 1rem' }}>
@@ -16,6 +17,7 @@ export function App() {
           <li><button type="button" onClick={() => setActiveView('start-by')}>Start-by dates</button></li>
           {/* [S-04] Allocation & shortage suggestions */}
           {/* [S-07] Remaining hours report */}
+          <li><button type="button" onClick={() => setActiveView('remaining-hours')}>Remaining hours</button></li>
           {/* [S-08] Assignment status */}
           {/* [S-09] Course-balance & start-by warnings */}
           {/* [S-10] Manual deadline for undated assignments */}
@@ -26,6 +28,7 @@ export function App() {
         </ul>
       </nav>
       {activeView === 'start-by' && <StartByPage />}
+      {activeView === 'remaining-hours' && <RemainingHoursPage />}
     </main>
   );
 }
