@@ -52,7 +52,7 @@ Unique: `(student_id, name)`.
 | `official_deadline` | date | Nullable; authoritative when present |
 | `student_deadline` | date | Nullable; used only when official deadline is absent |
 | `status` | text | `not_started` (default), `already_started`, `finished`. Same values as the API |
-| `submission_status` | text | `submitted`, `not_submitted`, `unavailable` (default). `unavailable` is not `not_submitted` |
+| `submission_status` | text | `submitted`, `not_submitted`, `unavailable` (default). `unavailable` is not `not_submitted`. Read-only in D4: it comes from labelled sample data (S-08, FR-10) |
 | `effort_hours` | numeric(5,1) | Nullable; Student-entered effort, 0.5–200 by 0.5 |
 | `effort_updated_at` | timestamptz | Nullable; used to compare with latest remaining-hours report |
 | `last_activity_at` | timestamptz | Nullable; activity as defined in DL-34 |
@@ -72,7 +72,7 @@ The applicable deadline is `official_deadline` when present, otherwise `student_
 | `source` | text | `individual` or `baseline` |
 | `created_at`, `updated_at` | timestamptz | Required |
 
-Unique: `(student_id, study_date)`. Missing row means Unknown. An individual entry takes precedence over S-19 baseline data. Invalid input is rejected with a message and the prior saved value remains unchanged (user-approved E-03 API behavior).
+Unique: `(student_id, study_date)`. Missing row means Unknown. Clearing a field deletes the row. An individual entry takes precedence over S-19 baseline data. Invalid input is rejected with a message and the prior saved value remains unchanged (user-approved E-03 API behavior).
 
 ### `course_skill_ratings`
 | Column | Type | Rules |
@@ -106,7 +106,7 @@ Append-only history. The latest report is the current report. A report of 0 mean
 | `version` | integer | Required, default 1 (ADR-002 rule 8) |
 | `created_at`, `updated_at` | timestamptz | Required |
 
-Unique: `(assignment_id, study_date)`. Store Student-edited allocation separately from R1-B calculated suggestions. Recalculation must preserve overrides. If an override exceeds available hours, preserve it and show the over-allocation condition.
+Unique: `(assignment_id, study_date)`. Store Student-edited allocation separately from R1-B calculated suggestions. Recalculation must preserve overrides. An edit larger than that day's availability minus the other overrides on that day is rejected (DL-51). If availability later falls below existing overrides, they are preserved and the day shows the over-allocation condition (FR-06-E3).
 
 ### `subtasks`
 | Column | Type | Rules |

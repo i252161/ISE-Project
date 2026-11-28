@@ -34,7 +34,7 @@
 │ Mon 30 Nov  │ [  1.5  ] hours       │ Known                  │
 │ Tue 01 Dec  │ [       ] hours       │ Unknown                │
 │ Wed 02 Dec  │ [  3.0  ] hours       │ Known                  │
-│ Thu 03 Dec  │ [       ] hours       │ Known                  │
+│ Thu 03 Dec  │ [       ] hours       │ Unknown                │
 ├─────────────┴───────────────────────┴────────────────────────┤
 │ [Save availability]                                           │
 │ Enter 0–24 hours in 0.5-hour steps. Invalid values are        │
@@ -95,7 +95,7 @@ Options are exactly: 1 Very Low, 2 Low, 3 Moderate, 4 High, 5 Very High Confiden
 │ Lab 3 — Programming Fundamentals                 [Sample]    │
 │ Official deadline: 02 Dec 2026                               │
 │ Student deadline:  —                                         │
-│ Status: [Not Started ▼]    Submission: [Not Submitted ▼]     │
+│ Status: [Not Started ▼]    Submission: Not Submitted (read-only) │
 ├──────────────────────────────────────────────────────────────┤
 │ PLAN                                                         │
 │ Start by: 30 Nov 2026                                        │
@@ -182,7 +182,7 @@ Use exactly the R1-B outcomes. If known availability suffices despite blank days
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Calculated suggestions and Student overrides must be visually distinct. An override is retained even if availability later decreases; show over-allocation rather than silently changing the override.
+Calculated suggestions and Student overrides must be visually distinct. An override is retained even if availability later decreases; show over-allocation rather than silently changing the override. An edit larger than that day's availability minus the other overrides is rejected with a message (DL-51); the over-allocation notice appears only after availability later falls below existing overrides.
 
 ## 7. Remaining hours — S-07
 
@@ -190,11 +190,9 @@ Show a numeric input (0–200, half-hour increments), a “Save report” action
 
 ## 8. Status — S-08
 
-Provide independent controls for:
-- Assignment status: Not Started / Already Started / Finished.
-- Submission status: Submitted / Not Submitted / Unavailable.
+Provide a control for assignment status: Not Started / Already Started / Finished.
 
-Do not combine these into one control. A status change counts as activity. A Submitted or Finished assignment is excluded from R1-B planning.
+Show submission status (Submitted / Not Submitted / Unavailable) separately and **read-only**. In D4 it comes from labelled sample data, because Classroom is deferred (S-08, FR-10). Do not combine the two into one control. A status change counts as activity. A Submitted or Finished assignment is excluded from R1-B planning.
 
 ## 9. Student-entered deadline — S-10
 
@@ -202,7 +200,7 @@ Show the official deadline (read-only in D4) and a separate Student-entered dead
 
 ## 10. Possible-imbalance warning — S-09
 
-Display warning text as an advisory, not a factual accusation. Example: “No recent progress logged for Mathematics — you may not have recorded it.” Trigger only under the R3-A conditions. Show the reason/context where useful. Timer sessions do not count as activity.
+Display warning text as an advisory, not a factual accusation. Example: “No recent progress logged for Mathematics — you may not have recorded it.” Trigger only under the R3-A conditions. Show the reason/context where useful. Timer sessions do not count as activity. Show the possible-imbalance notice and any urgent start-by warning as two separate, labelled messages (FR-08-AC3). A "confirmed not started" warning appears when an assignment marked Not Started has a passed start-by date (FR-08-AC5).
 
 ## 11. Study timer — S-15
 

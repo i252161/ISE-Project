@@ -40,7 +40,7 @@ Four resources have a `version` column (`data-model.md` §2): **assignments, all
 
 - Every read of one of these resources includes its current `"version": <integer>`.
 - Every write to one of them sends the `version` the client last read, in the JSON body. This applies to:
-  - assignment writes: `PUT …/effort`, `…/status`, `…/submission-status`, `…/student-deadline`;
+  - assignment writes: `PUT …/effort`, `…/status`, `…/student-deadline`;
   - `PUT /api/assignments/{id}/allocation/{date}` when an override already exists for that date (omit `version` to create a new one);
   - `PATCH /api/subtasks/{id}` and `DELETE /api/subtasks/{id}`;
   - `POST /api/timer/{sessionId}/pause | resume | stop`.
@@ -83,7 +83,7 @@ Request:
 ```json
 { "date": "2026-11-27", "hours": 0, "availability": "known", "source": "individual" }
 ```
-Invalid values are rejected with a message and preserve the old value.
+Invalid values are rejected with a message and preserve the old value. Sending `null` deletes that date's stored row, so the day returns to Unknown.
 
 ## 3. Course ratings — S-02
 
@@ -125,14 +125,15 @@ Response:
       "applicableDeadline": "2026-12-02", "status": "not_started",
       "submissionStatus": "not_submitted", "effortHours": 4,
       "effectiveEffortHours": 4, "startBy": "2026-11-30",
-      "planningState": "scheduled", "isSample": true, "version": 1
+      "planningState": "scheduled", "isSample": true, "version": 1,
+      "subtaskTotal": 5, "subtaskCompleted": 2
     }
   ],
   "filters": { "q": "", "courseId": null, "submissionStatus": null, "deadlineFrom": null, "deadlineTo": null },
   "sort": "deadline"
 }
 ```
-`submissionStatus=unavailable` is distinct from `not_submitted`. Empty result is a successful response with an empty array.
+`submissionStatus=unavailable` is distinct from `not_submitted`. Empty result is a successful response with an empty array. `subtaskTotal` and `subtaskCompleted` feed the "2 of 5" display (S-14); when `subtaskTotal` is 0 the client shows no count (FR-15-E4).
 
 ### `GET /api/assignments/{assignmentId}`
 Returns assignment fields plus course, start-by/shortage state, allocation, subtasks, timer summary and warnings available to the detail view. The response uses the same field names as the list representation and includes:
@@ -188,7 +189,7 @@ Example planning result:
 Returns suggested R1-B daily split, saved overrides and over-allocation dates.
 
 ### `PUT /api/assignments/{assignmentId}/allocation/{date}`
-Request: `{ "hours": 2 }`, plus `"version"` when replacing an existing override (§1.1). Positive half-hour increments only. Stores a Student override, never overwrites the calculated suggestion. Response returns saved override and refreshed allocation view. If the override exceeds that day's availability, preserve it and report the over-allocation state. Suggestions and shortage explanations are neutral; they do not rank assignments.
+Request: `{ "hours": 2 }`, plus `"version"` when replacing an existing override (§1.1). Positive half-hour increments only. Stores a Student override, never overwrites the calculated suggestion. Response returns saved override and refreshed allocation view. An edit larger than that day's availability minus the other overrides on that day is rejected with `400 VALIDATION_ERROR` and nothing changes (DL-51). If availability later falls below existing overrides, the overrides are kept and the day appears in `overAllocatedDates` (FR-06-E3). Suggestions and shortage explanations are neutral; they do not rank assignments.
 
 ## 7. Remaining-hours reports — S-07
 
@@ -210,9 +211,8 @@ Latest report replaces older report as current. Zero does not change assignment 
 Request: `{ "status": "already_started", "version": 3 }`. Allowed values: `not_started`, `already_started`, `finished`.
 Response returns saved status, timestamp/last-activity value and refreshed planning state. Status changes count as activity. Status and submission status are independent.
 
-### `PUT /api/assignments/{assignmentId}/submission-status`
-Request: `{ "submissionStatus": "submitted", "version": 4 }`. Allowed values: `submitted`, `not_submitted`, `unavailable`.
-Response returns saved submission status and refreshed planning state. Submitted assignments do not take planning hours.
+### Submission status (read-only in D4)
+There is no write endpoint. In D4 submission status comes from labelled sample data, because Classroom is deferred (DL-19, S-08). It is returned by the list and detail reads. `unavailable` is never shown as `not_submitted` (FR-10-AC2). Submitted assignments do not take planning hours.
 
 ## 9. Student-entered deadline — S-10
 
@@ -228,7 +228,7 @@ Returns ordered subtasks.
 
 ### `POST /api/assignments/{assignmentId}/subtasks`
 Request: `{ "title": "Read the requirements" }`. Trim whitespace; resulting title length must be 1–200 characters.
-Response returns created subtask.
+Response returns the created subtask, including `id`, `title`, `isCompleted`, `position` and `version`.
 
 ### `PATCH /api/subtasks/{subtaskId}`
 Request may update `{ "title": "..." }`, `{ "isCompleted": true }`, or both, and always carries `"version"` (§1.1).
@@ -266,7 +266,20 @@ Stops and persists every session, including duration `0`. Response returns saved
 ## 12. Possible-imbalance warnings — S-09
 
 ### `GET /api/warnings`
-Returns possible-imbalance and 3-day advisory warnings derived from S-07/S-08 activity and S-03 start-by dates. Warning text must communicate that progress is unknown, not assert that a Student has neglected a course.
+Returns possible-imbalance and 3-day advisory warnings derived from S-07/S-08 activity and S-03 start-by dates. Warning text must communicate that progress is unknown, not assert that a Student has neglected a course. Each item has a `type`, so the client shows the balance notice and the urgent start-by warning as two separate, labelled messages (FR-08-AC3):
+```json
+{
+  "warnings": [
+    {
+      "type": "possible_imbalance | three_day_advisory | urgent_start_by | confirmed_not_started",
+      "courseId": "uuid", "assignmentId": "uuid or null",
+      "daysWithoutActivity": 9,
+      "text": "No recent progress logged for Math — you may not have recorded it."
+    }
+  ]
+}
+```
+`confirmed_not_started` is for an assignment the Student marked Not Started whose start-by date has passed (FR-08-AC5).
 
 R3-A conditions:
 1. Course has unfinished, unsubmitted assignment with start-by within next 3 days or passed.
