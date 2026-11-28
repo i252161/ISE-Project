@@ -1,8 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import type { Pool } from 'pg';
-import { runMigrations } from './migrate';
+import { findMigrationsDir, runMigrations } from './migrate';
 import { DEMO_STUDENT_ID, seedDemoStudent } from './seed/demo-student';
 
 export interface SessionPrincipal {
@@ -22,24 +20,6 @@ function ttlSeconds(): number {
   const days = Number(process.env.SESSION_TTL_DAYS ?? DEFAULT_TTL_DAYS);
   const safeDays = Number.isFinite(days) && days > 0 ? days : DEFAULT_TTL_DAYS;
   return safeDays * 24 * 60 * 60;
-}
-
-// tsc does not copy .sql files into dist/, so fall back to the source folder.
-function findMigrationsDir(): string {
-  const candidates = [
-    path.join(__dirname, 'migrations'),
-    path.resolve(__dirname, '../../src/data-access/migrations')
-  ];
-  for (const dir of candidates) {
-    try {
-      if (fs.readdirSync(dir).some((name) => name.endsWith('.sql'))) {
-        return dir;
-      }
-    } catch {
-      // try the next candidate
-    }
-  }
-  return candidates[0] as string;
 }
 
 const readyByPool = new WeakMap<Pool, Promise<void>>();
