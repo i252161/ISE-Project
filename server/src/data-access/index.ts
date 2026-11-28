@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { createAssignmentReads } from './assignments';
 import { runMigrations } from './migrate';
 import { createSessions } from './sessions';
 import { createAvailability } from './availability';
@@ -47,4 +48,10 @@ export type {
 export { remainingHoursQueries } from './remaining-hours/queries';
 export type { RemainingHoursReportRow, InsertRemainingHoursTxResult } from './remaining-hours/queries';
 
+/**
+ * Read-only assignment queries for Planning Core (E-05). Not for the API Layer (agent.md §4.3).
+ */
+export const assignmentReads = createAssignmentReads(() => getPool());
+
+export type { AssignmentRecord } from './assignments';
 export { runMigrations };

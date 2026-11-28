@@ -1,6 +1,6 @@
 # E-05 — Assignment list and detail screens (read-only)
 
-**Type:** setup task (not a slice) · **Status:** blocked: E-04 not built · **Plan:** plan.md v03 §8 · **Decisions:** DL-55
+**Type:** setup task (not a slice) · **Status:** built on `setup/E-05-list-detail`, review pending · **Plan:** plan.md v03 §8 · **Decisions:** DL-55
 **Owner:** Ahmad · **Reviewer:** Ali (DL-56)
 
 ## What this is

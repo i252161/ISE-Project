@@ -156,3 +156,18 @@ Gate 3 command output (run by Rehan, 2026-11-28, Windows):
 | 4 | Previously accepted slices re-checked | ☐ | | Whole suite passes (48 of 48, 5 of 5 runs); tick after review |
 | 4 | Merged and runs from a clean start (migrations apply) | ☐ | | Tick after merge |
 
+## Record: E-05 Assignment list and detail
+
+**Slice:** E-05 **plan.md version:** v03
+
+| Gate | Check | Done? | Evidence link | Notes |
+|---|---|---|---|---|
+| 3 | Boundary check (dependency-cruiser) passes | ☑ | `Test-Evidence.md`, row "E-05 / Gate 3" | 42 modules, 66 dependencies, no violations |
+| 3 | Only the 11 agreed backend modules/interfaces used | ☑ | `ls server/src` | New folders are inside existing modules: `api-layer/assignments/`, `planning-core/assignments/`; file `data-access/assignments.ts` |
+| 3 | No prohibited technology (agent.md §7.1) | ☑ | `git diff` | No `package.json` change; no router package |
+| 3 | Only the Data Access Layer touches PostgreSQL | ☑ | search for `from 'pg'` outside `data-access` | No matches |
+| 3 | API Layer → Data Access Layer is sessions only (agent.md §4.3) | ☑ | `api-layer/index.ts` line 3 | Assignment reads go through Planning Core |
+| 3 | No academic data stored on the device (DL-11) | ☑ | `client/src/features/assignments/` | No `localStorage` or IndexedDB; requests use `cache: 'no-store'`; the service worker skips `/api/` |
+| 3 | Any design change recorded in the ADR or decision log | ☑ | `decision-log.md` DL-59; `api-contract.md` §4 notes | |
+| 4 | Previously accepted slices re-checked | ☐ | | Whole suite passes (62 of 62, 5 of 5 runs); tick after review |
+| 4 | Merged and runs from a clean start (migrations apply) | ☐ | | Tick after merge |

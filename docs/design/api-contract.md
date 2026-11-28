@@ -151,6 +151,12 @@ Returns assignment fields plus course, start-by/shortage state, allocation, subt
 }
 ```
 
+**E-05 delivery notes (DL-59):**
+- Until the owning slice merges, its part of the response is `null`, meaning "not built yet": `startBy` and `planningState` in the list and `planning` in the detail (S-03), `allocation` (S-04), `subtasks` (S-14), `timer` (S-15), `warnings` (S-09). An empty array (`[]`) is reserved for "built, and there are none". Each slice fills only its own marked line in `server/src/planning-core/assignments/index.ts`.
+- The detail also returns `description`, `effortUpdatedAt`, `lastActivityAt` and `latestRemainingHours` (`{ remainingHours, reportedAt }` or `null`).
+- An unknown id, a malformed id, or another Student's assignment returns `404` `{ "error": { "code": "NOT_FOUND", "message": "Assignment not found." } }`.
+- Until S-16 merges, `GET /api/assignments` ignores its query parameters and always sorts by applicable deadline, undated last (ties: title, then id).
+
 ## 5. Manual effort and start-by calculation — S-03
 
 ### `PUT /api/assignments/{assignmentId}/effort`

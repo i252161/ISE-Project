@@ -10,6 +10,9 @@ export const readOnly = {} as const;
 // S-03 replaces the body of recalculate.ts with the real R1-B calculation.
 export { recalculateStudentPlan } from './recalculate';
 
+// Assignment list and detail, read-only (E-05).
+export * as assignments from './assignments/index';
+
 // --- Slice exports (one line per slice, DL-55) ---
 export * as availability from './availability/index';
 // [S-02] Course rating exports

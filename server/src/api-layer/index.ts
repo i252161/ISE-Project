@@ -1,6 +1,7 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import { sessions } from '../data-access/index';
+import { registerAssignmentRoutes } from './assignments/routes';
 import { registerAvailabilityRoutes } from './availability/routes';
 import { registerStartByRoutes } from './start-by/routes';
 import { registerRemainingHoursRoutes } from './remaining-hours/routes';
@@ -71,6 +72,9 @@ export async function buildApp(options: { logger?: boolean; clock?: () => Date }
     reply.clearCookie(SESSION_COOKIE, { path: '/' });
     return { ok: true };
   });
+
+  // [E-05] Assignment list and detail (read-only)
+  registerAssignmentRoutes(app);
 
   // --- Slice route registration (one line per slice, DL-55) ---
   // [S-01] Availability routes
